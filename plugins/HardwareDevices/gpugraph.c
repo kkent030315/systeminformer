@@ -265,8 +265,8 @@ VOID GraphicsDeviceLayoutGraphs(
     marginRect = Context->GpuGraphMargin;
     PhGetSizeDpiValue(&marginRect, Context->SysinfoSection->Parameters->WindowDpi, TRUE);
 
-    GetClientRect(Context->GpuDialog, &clientRect);
-    GetClientRect(GetDlgItem(Context->GpuDialog, IDC_GPU_L), &labelRect);
+    PhGetClientRect(Context->GpuDialog, &clientRect);
+    PhGetClientRect(GetDlgItem(Context->GpuDialog, IDC_GPU_L), &labelRect);
     graphWidth = clientRect.right - marginRect.left - marginRect.right;
 
     //if (EtGpuSupported)
@@ -439,7 +439,7 @@ VOID GraphicsDeviceNotifyGpuGraph(
             PPH_GRAPH_DRAW_INFO drawInfo = getDrawInfo->DrawInfo;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (GraphicsEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorCpuKernel"), 0, Context->SysinfoSection->Parameters->WindowDpi);
+            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_CPU_KERNEL), 0, Context->SysinfoSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &Context->GpuGraphState,
@@ -529,7 +529,7 @@ VOID GraphicsDeviceNotifyDedicatedGraph(
             ULONG i;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (GraphicsEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorPrivate"), 0, Context->SysinfoSection->Parameters->WindowDpi);
+            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_PRIVATE), 0, Context->SysinfoSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &Context->DedicatedGraphState,
@@ -611,7 +611,7 @@ VOID GraphicsDeviceNotifySharedGraph(
             ULONG i;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_USE_LINE_2 | (GraphicsEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorPhysical"), PhGetIntegerSetting(L"ColorCpuKernel"), Context->SysinfoSection->Parameters->WindowDpi);
+            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_PHYSICAL), PhGetIntegerSetting(SETTING_COLOR_CPU_KERNEL), Context->SysinfoSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &Context->SharedGraphState,
@@ -716,7 +716,7 @@ VOID GraphicsDeviceNotifyPowerUsageGraph(
             ULONG i;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (GraphicsEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorPowerUsage"), 0, Context->SysinfoSection->Parameters->WindowDpi);
+            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_POWER_USAGE), 0, Context->SysinfoSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &Context->PowerUsageGraphState,
@@ -808,7 +808,7 @@ VOID GraphicsDeviceNotifyTemperatureGraph(
             ULONG i;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (GraphicsEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorTemperature"), 0, Context->SysinfoSection->Parameters->WindowDpi);
+            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_TEMPERATURE), 0, Context->SysinfoSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &Context->TemperatureGraphState,
@@ -908,7 +908,7 @@ VOID GraphicsDeviceNotifyFanRpmGraph(
             ULONG i;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (GraphicsEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorFanRpm"), 0, Context->SysinfoSection->Parameters->WindowDpi);
+            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_FAN_RPM), 0, Context->SysinfoSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &Context->FanRpmGraphState,
@@ -1170,7 +1170,7 @@ BOOLEAN GraphicsDeviceSectionCallback(
             PPH_GRAPH_DRAW_INFO drawInfo = Parameter1;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (GraphicsEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorCpuKernel"), 0, Section->Parameters->WindowDpi);
+            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_CPU_KERNEL), 0, Section->Parameters->WindowDpi);
             PhGetDrawInfoGraphBuffers(&Section->GraphState.Buffers, drawInfo, context->DeviceEntry->GpuUsageHistory.Count);
 
             if (!Section->GraphState.Valid)
@@ -1360,7 +1360,7 @@ INT_PTR CALLBACK GraphicsDeviceDialogProc(
 
             context->GpuPanel = PhCreateDialog(PluginInstance->DllBase, MAKEINTRESOURCE(IDD_GPUDEVICE_PANEL), hwndDlg, GraphicsDevicePanelDialogProc, context);
             ShowWindow(context->GpuPanel, SW_SHOW);
-            PhAddLayoutItemEx(&context->GpuLayoutManager, context->GpuPanel, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, panelItem->Margin);
+            PhAddLayoutItemEx(&context->GpuLayoutManager, context->GpuPanel, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, &panelItem->Margin);
 
             GraphicsDeviceCreateGraphs(context);
             GraphicsDeviceUpdateGraphs(context);
@@ -1391,6 +1391,8 @@ INT_PTR CALLBACK GraphicsDeviceDialogProc(
                 SetWindowFont(GetDlgItem(hwndDlg, IDC_GPUNAME), context->SysinfoSection->Parameters->MediumFont, FALSE);
             }
 
+            PhLayoutManagerUpdate(&context->GpuLayoutManager, context->SysinfoSection->Parameters->WindowDpi);
+            PhLayoutManagerLayout(&context->GpuLayoutManager);
             GraphicsDeviceLayoutGraphs(context);
         }
         break;

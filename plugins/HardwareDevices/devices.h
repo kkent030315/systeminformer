@@ -14,7 +14,7 @@
 #ifndef _DEVICES_H_
 #define _DEVICES_H_
 
-#define PLUGIN_NAME L"ProcessHacker.HardwareDevices"
+#define PLUGIN_NAME L"HardwareDevices"
 #define SETTING_NAME_ENABLE_NDIS (PLUGIN_NAME L".EnableNDIS")
 #define SETTING_NAME_INTERFACE_LIST (PLUGIN_NAME L".NetworkList")
 #define SETTING_NAME_NETWORK_POSITION (PLUGIN_NAME L".NetworkWindowPosition")
@@ -207,7 +207,7 @@ typedef struct _DV_NETADAPTER_ENTRY
     PH_CIRCULAR_BUFFER_ULONG64 InboundBuffer;
     PH_CIRCULAR_BUFFER_ULONG64 OutboundBuffer;
 
-    volatile LONG JustProcessed;
+    LONG JustProcessed;
 } DV_NETADAPTER_ENTRY, *PDV_NETADAPTER_ENTRY;
 
 typedef struct _DV_NETADAPTER_SYSINFO_CONTEXT
@@ -274,7 +274,7 @@ typedef struct _DV_NETADAPTER_DETAILS_CONTEXT
     PH_CALLBACK_REGISTRATION ProcessesUpdatedRegistration;
 
     ULONG64 LastDetailsInboundValue;
-    ULONG64 LastDetailsIOutboundValue;
+    ULONG64 LastDetailsOutboundValue;
 } DV_NETADAPTER_DETAILS_CONTEXT, *PDV_NETADAPTER_DETAILS_CONTEXT;
 
 typedef struct _DV_NETADAPTER_CONTEXT
@@ -418,15 +418,63 @@ VOID ShowNetAdapterDetailsDialog(
 #define BITS_IN_ONE_BYTE 8
 #define NDIS_UNIT_OF_MEASUREMENT 100
 
+// rev
+WINBASEAPI
+ULONG
+WINAPI
+NhGetInterfaceDescriptionFromGuid(
+    _In_ const GUID *InterfaceGuid,
+    _Out_writes_opt_(*InterfaceDescriptionLength) PWSTR InterfaceDescription,
+    _Inout_ PSIZE_T InterfaceDescriptionLength,
+    _In_ BOOL Cache,
+    _In_ BOOL Refresh
+    );
+
+// rev
+WINBASEAPI
+ULONG
+WINAPI
+NhGetInterfaceNameFromDeviceGuid(
+    _In_ PGUID DeviceGuid,
+    _Out_writes_(InterfaceDescriptionLength) PWCHAR InterfaceDescription,
+    _Inout_ PULONG InterfaceDescriptionLength,
+    _In_ BOOL Cache,
+    _In_ BOOL Refresh
+    );
+
+// rev
+WINBASEAPI
+ULONG
+WINAPI
+NhGetInterfaceNameFromGuid(
+    _In_ PGUID InterfaceGuid,
+    _Out_writes_(InterfaceNameLength) PWSTR InterfaceName,
+    _Inout_ PSIZE_T InterfaceNameLength,
+    _In_ BOOL Cache,
+    _In_ BOOL Refresh
+    );
+
+// rev
+WINBASEAPI
+ULONG
+WINAPI
+NhGetGuidFromInterfaceName(
+    _In_ PCWSTR InterfaceName,
+    _Out_ PGUID InterfaceGuid,
+    _In_ BOOL Cache,
+    _In_ BOOL Refresh
+    );
+
+// Query functions
+
 BOOLEAN NetworkAdapterQuerySupported(
     _In_ HANDLE DeviceHandle
     );
 
-_Success_(return)
-BOOLEAN NetworkAdapterQueryNdisVersion(
+NTSTATUS NetworkAdapterQueryNdisVersion(
     _In_ HANDLE DeviceHandle,
-    _Out_opt_ PUINT MajorVersion,
-    _Out_opt_ PUINT MinorVersion
+    _Out_opt_ PULONG MajorVersion,
+    _Out_opt_ PULONG MinorVersion
     );
 
 PPH_STRING NetworkAdapterQueryNameFromInterfaceGuid(
@@ -455,8 +503,7 @@ NTSTATUS NetworkAdapterQueryLinkState(
     _Out_ PNDIS_LINK_STATE State
     );
 
-_Success_(return)
-BOOLEAN NetworkAdapterQueryMediaType(
+NTSTATUS NetworkAdapterQueryMediaType(
     _In_ HANDLE DeviceHandle,
     _Out_ PNDIS_PHYSICAL_MEDIUM Medium
     );
@@ -549,7 +596,7 @@ typedef struct _DV_DISK_ENTRY
     ULONG QueueDepth;
     ULONG SplitCount;
 
-    volatile LONG JustProcessed;
+    LONG JustProcessed;
 } DV_DISK_ENTRY, *PDV_DISK_ENTRY;
 
 typedef struct _DV_DISK_SYSINFO_CONTEXT
@@ -816,8 +863,7 @@ PPH_LIST DiskDriveQueryMountPointHandles(
     _In_ ULONG DeviceNumber
     );
 
-_Success_(return)
-BOOLEAN DiskDriveQueryDeviceInformation(
+NTSTATUS DiskDriveQueryDeviceInformation(
     _In_ HANDLE DeviceHandle,
     _Out_opt_ PPH_STRING* DiskVendor,
     _Out_opt_ PPH_STRING* DiskModel,
@@ -903,7 +949,7 @@ BOOLEAN DiskDriveQueryFileSystemInfoEx(
 typedef struct _NTFS_VOLUME_INFO
 {
     NTFS_VOLUME_DATA_BUFFER VolumeData;
-    NTFS_EXTENDED_VOLUME_DATA ExtendedVolumeData;
+    NTFS_EXTENDED_VOLUME_DATA VolumeDataEx;
 } NTFS_VOLUME_INFO, *PNTFS_VOLUME_INFO;
 
 _Success_(return)
@@ -1004,7 +1050,7 @@ typedef enum _SMART_ATTRIBUTE_ID
     // TODO: Add value 229
     SMART_ATTRIBUTE_ID_GMR_HEAD_AMPLITUDE = 0xE6,
     SMART_ATTRIBUTE_ID_DRIVE_TEMPERATURE = 0xE7,
-    SMART_ATTRIBUTE_ID_ENDURACE_REMAINING = 0xE8,
+    SMART_ATTRIBUTE_ID_ENDURANCE_REMAINING = 0xE8,
     SMART_ATTRIBUTE_ID_SSD_MEDIA_WEAROUT_INDICATOR = 0xE9,
     SMART_ATTRIBUTE_ID_SSD_ERASE_COUNT = 0xEA,
     SMART_ATTRIBUTE_ID_GOOD_BLOCK_COUNT_AND_SYSTEM_BLOCK_COUNT = 0xEB,
@@ -1244,7 +1290,7 @@ VOID RaplDeviceSampleData(
 
 _Success_(return)
 BOOLEAN QueryRaplDeviceInterfaceDescription(
-    _In_ PWSTR DeviceInterface,
+    _In_ PCWSTR DeviceInterface,
     _Out_ PPH_STRING* DeviceDescription
     );
 
@@ -1464,6 +1510,7 @@ VOID GraphicsDeviceSysInfoInitializing(
     _In_ PDV_GPU_ENTRY DiskEntry
     );
 
+_Function_class_(PH_SYSINFO_SECTION_CALLBACK)
 BOOLEAN GraphicsDeviceSectionCallback(
     _In_ PPH_SYSINFO_SECTION Section,
     _In_ PH_SYSINFO_SECTION_MESSAGE Message,

@@ -18,6 +18,7 @@
 #include <phsvccl.h>
 #include <procprv.h>
 #include <settings.h>
+#include <phsettings.h>
 #include <mapldr.h>
 
 #include <trace.h>
@@ -132,7 +133,7 @@ BOOLEAN PhIsPluginDisabled(
     BOOLEAN found;
     PPH_STRING disabled;
 
-    disabled = PhGetStringSetting(L"DisabledPlugins");
+    disabled = PhGetStringSetting(SETTING_DISABLED_PLUGINS);
     found = PhpLocateDisabledPlugin(disabled, BaseName, NULL);
     PhDereferenceObject(disabled);
 
@@ -149,7 +150,7 @@ VOID PhSetPluginDisabled(
     ULONG_PTR foundIndex;
     PPH_STRING newDisabled;
 
-    disabled = PhGetStringSetting(L"DisabledPlugins");
+    disabled = PhGetStringSetting(SETTING_DISABLED_PLUGINS);
     found = PhpLocateDisabledPlugin(disabled, BaseName, &foundIndex);
 
     if (Disable && !found)
@@ -163,13 +164,13 @@ VOID PhSetPluginDisabled(
             memcpy(newDisabled->Buffer, disabled->Buffer, disabled->Length);
             newDisabled->Buffer[disabled->Length / sizeof(WCHAR)] = L'|';
             memcpy(&newDisabled->Buffer[disabled->Length / sizeof(WCHAR) + 1], BaseName->Buffer, BaseName->Length);
-            PhSetStringSetting2(L"DisabledPlugins", &newDisabled->sr);
+            PhSetStringSetting2(SETTING_DISABLED_PLUGINS, &newDisabled->sr);
             PhDereferenceObject(newDisabled);
         }
         else
         {
             // This is the first disabled plugin.
-            PhSetStringSetting2(L"DisabledPlugins", BaseName);
+            PhSetStringSetting2(SETTING_DISABLED_PLUGINS, BaseName);
         }
     }
     else if (!Disable && found)
@@ -196,22 +197,22 @@ VOID PhSetPluginDisabled(
         memcpy(newDisabled->Buffer, disabled->Buffer, foundIndex * sizeof(WCHAR));
         memcpy(&newDisabled->Buffer[foundIndex], &disabled->Buffer[foundIndex + removeCount],
             disabled->Length - removeCount * sizeof(WCHAR) - foundIndex * sizeof(WCHAR));
-        PhSetStringSetting2(L"DisabledPlugins", &newDisabled->sr);
+        PhSetStringSetting2(SETTING_DISABLED_PLUGINS, &newDisabled->sr);
         PhDereferenceObject(newDisabled);
     }
 
     PhDereferenceObject(disabled);
 }
 
-PPH_STRING PhGetPluginDirectoryPath(
-    _In_ BOOLEAN NativeFileName
-    )
-{
-    static CONST PH_STRINGREF pluginsDirectory = PH_STRINGREF_INIT(L"plugins\\");
-
-    return PhGetApplicationDirectoryFileName(&pluginsDirectory, NativeFileName);
-}
-
+//PPH_STRING PhGetPluginDirectoryPath(
+//    _In_ BOOLEAN NativeFileName
+//    )
+//{
+//    static CONST PH_STRINGREF pluginsDirectory = PH_STRINGREF_INIT(L"plugins\\");
+//
+//    return PhGetApplicationDirectoryFileName(&pluginsDirectory, NativeFileName);
+//}
+//
 //PPH_STRING PhpGetPluginDirectoryPath(
 //    VOID
 //    )
@@ -464,6 +465,7 @@ VOID PhLoadPlugins(
     VOID
     )
 {
+    static CONST PH_STRINGREF pluginsDirectory = PH_STRINGREF_INIT(L"plugins\\");
     NTSTATUS status;
     BOOLEAN pluginLoadNative;
     BOOLEAN pluginLoadDefault;
@@ -471,9 +473,9 @@ VOID PhLoadPlugins(
     PPH_STRING pluginDirectoryPath;
     PH_LOADPLUGIN_CONTEXT pluginLoadContext;
 
-    pluginLoadNative = !!PhGetIntegerSetting(L"EnablePluginsNative");
-    pluginLoadDefault = !!PhGetIntegerSetting(L"EnableDefaultSafePlugins");
-    pluginDirectoryPath = PhGetPluginDirectoryPath(pluginLoadNative);
+    pluginLoadNative = !!PhGetIntegerSetting(SETTING_ENABLE_PLUGINS_NATIVE);
+    pluginLoadDefault = !!PhGetIntegerSetting(SETTING_ENABLE_DEFAULT_SAFE_PLUGINS);
+    pluginDirectoryPath = PhGetApplicationDirectoryFileName(&pluginsDirectory, pluginLoadNative);
 
     if (PhIsNullOrEmptyString(pluginDirectoryPath))
         return;
@@ -517,7 +519,7 @@ VOID PhLoadPlugins(
     if (
         pluginLoadContext.LoadErrors &&
         pluginLoadContext.LoadErrors->Count != 0 &&
-        PhGetIntegerSetting(L"ShowPluginLoadErrors") &&
+        PhGetIntegerSetting(SETTING_SHOW_PLUGIN_LOAD_ERRORS) &&
         !PhStartupParameters.PhSvc
         )
     {

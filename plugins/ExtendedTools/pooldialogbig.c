@@ -119,18 +119,26 @@ INT_PTR CALLBACK EtBigPoolMonDlgProc(
             PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDC_REFRESH), NULL, PH_ANCHOR_BOTTOM | PH_ANCHOR_LEFT);
             PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDCANCEL), NULL, PH_ANCHOR_BOTTOM | PH_ANCHOR_RIGHT);
 
-            if (PhGetIntegerPairSetting(SETTING_NAME_BIGPOOL_WINDOW_POSITION).X != 0)
+            if (PhValidWindowPlacementFromSetting(SETTING_NAME_BIGPOOL_WINDOW_POSITION))
                 PhLoadWindowPlacementFromSetting(SETTING_NAME_BIGPOOL_WINDOW_POSITION, SETTING_NAME_BIGPOOL_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, NULL);
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
 
             EtUpdateBigPoolTable(context);
         }
         break;
     case WM_SIZE:
-        PhLayoutManagerLayout(&context->LayoutManager);
+        {
+            PhLayoutManagerLayout(&context->LayoutManager);
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&context->LayoutManager);
+        }
         break;
     case WM_DESTROY:
         {
@@ -180,6 +188,9 @@ INT_PTR CALLBACK EtBigPoolMonDlgProc(
                         PVOID* listviewItems;
                         PPH_EMENU_ITEM selectedItem;
 
+                        if (!PhGetCursorPos(&point))
+                            break;
+
                         PhGetSelectedListViewItemParams(context->ListViewHandle, &listviewItems, &numberOfItems);
 
                         if (numberOfItems == 0)
@@ -189,7 +200,6 @@ INT_PTR CALLBACK EtBigPoolMonDlgProc(
                         PhInsertEMenuItem(menu, PhCreateEMenuItem(0, USHRT_MAX, L"&Copy", NULL, NULL), ULONG_MAX);
                         PhInsertCopyListViewEMenuItem(menu, USHRT_MAX, context->ListViewHandle);
 
-                        GetCursorPos(&point);
                         selectedItem = PhShowEMenu(
                             menu,
                             context->ListViewHandle,

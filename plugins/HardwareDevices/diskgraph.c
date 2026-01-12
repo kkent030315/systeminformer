@@ -279,8 +279,8 @@ VOID DiskDeviceLayoutGraphs(
     margin = Context->GraphMargin;
     PhGetSizeDpiValue(&margin, Context->SysinfoSection->Parameters->WindowDpi, TRUE);
 
-    GetClientRect(Context->WindowHandle, &clientRect);
-    GetClientRect(Context->LabelWriteHandle, &labelRect);
+    PhGetClientRect(Context->WindowHandle, &clientRect);
+    PhGetClientRect(Context->LabelWriteHandle, &labelRect);
     graphWidth = clientRect.right - margin.left - margin.right;
     graphHeight = (clientRect.bottom - margin.top - margin.bottom - labelRect.bottom * 2 - Context->GraphPadding * 3) / 2;
 
@@ -351,7 +351,7 @@ VOID DiskDeviceNotifyReadGraph(
             PPH_GRAPH_DRAW_INFO drawInfo = getDrawInfo->DrawInfo;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y;
-            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoReadOther"), 0, Context->SysinfoSection->Parameters->WindowDpi);
+            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_READ_OTHER), 0, Context->SysinfoSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &Context->GraphWriteState,
@@ -437,7 +437,7 @@ VOID DiskDeviceNotifyWriteGraph(
             PPH_GRAPH_DRAW_INFO drawInfo = getDrawInfo->DrawInfo;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y;
-            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoWrite"), 0, Context->SysinfoSection->Parameters->WindowDpi);
+            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_WRITE), 0, Context->SysinfoSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &Context->GraphReadState,
@@ -566,7 +566,7 @@ INT_PTR CALLBACK DiskDeviceDialogProc(
 
             context->PanelWindowHandle = PhCreateDialog(PluginInstance->DllBase, MAKEINTRESOURCE(IDD_DISKDRIVE_PANEL), hwndDlg, DiskDevicePanelDialogProc, context);
             ShowWindow(context->PanelWindowHandle, SW_SHOW);
-            PhAddLayoutItemEx(&context->LayoutManager, context->PanelWindowHandle, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, panelItem->Margin);
+            PhAddLayoutItemEx(&context->LayoutManager, context->PanelWindowHandle, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, &panelItem->Margin);
 
             DiskDeviceUpdateDialogDpi(context);
             DiskDeviceUpdateTitle(context);
@@ -609,6 +609,7 @@ INT_PTR CALLBACK DiskDeviceDialogProc(
                 SetWindowFont(context->DiskNameLabel, context->SysinfoSection->Parameters->MediumFont, FALSE);
             }
 
+            PhLayoutManagerUpdate(&context->LayoutManager, context->SysinfoSection->Parameters->WindowDpi);
             PhLayoutManagerLayout(&context->LayoutManager);
             DiskDeviceLayoutGraphs(context);
         }
@@ -644,6 +645,7 @@ INT_PTR CALLBACK DiskDeviceDialogProc(
     return FALSE;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS DiskDeviceQueryNameWorkQueueItem(
     _In_ PDV_DISK_ENTRY DiskEntry
     )
@@ -655,7 +657,7 @@ NTSTATUS DiskDeviceQueryNameWorkQueueItem(
     PhDelayExecution(4000);
 #endif
 
-    InterlockedExchange(&DiskEntry->JustProcessed, TRUE);
+    InterlockedExchange((volatile LONG*)&DiskEntry->JustProcessed, TRUE);
     DiskEntry->PendingQuery = FALSE;
 
     PhDereferenceObject(DiskEntry);
@@ -672,6 +674,7 @@ VOID DiskDeviceQueueNameUpdate(
     PhQueueItemWorkQueue(PhGetGlobalWorkQueue(), DiskDeviceQueryNameWorkQueueItem, DiskEntry);
 }
 
+_Function_class_(PH_SYSINFO_SECTION_CALLBACK)
 BOOLEAN DiskDeviceSectionCallback(
     _In_ PPH_SYSINFO_SECTION Section,
     _In_ PH_SYSINFO_SECTION_MESSAGE Message,
@@ -701,7 +704,7 @@ BOOLEAN DiskDeviceSectionCallback(
                 if (context->DiskEntry->JustProcessed)
                 {
                     DiskDeviceUpdateTitle(context);
-                    InterlockedExchange(&context->DiskEntry->JustProcessed, FALSE);
+                    InterlockedExchange((volatile LONG*)&context->DiskEntry->JustProcessed, FALSE);
                 }
 
                 DiskDeviceTickDialog(context);
@@ -746,7 +749,7 @@ BOOLEAN DiskDeviceSectionCallback(
             PPH_GRAPH_DRAW_INFO drawInfo = (PPH_GRAPH_DRAW_INFO)Parameter1;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y | PH_GRAPH_USE_LINE_2;
-            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoReadOther"), PhGetIntegerSetting(L"ColorIoWrite"), context->SysinfoSection->Parameters->WindowDpi);
+            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_READ_OTHER), PhGetIntegerSetting(SETTING_COLOR_IO_WRITE), context->SysinfoSection->Parameters->WindowDpi);
             PhGetDrawInfoGraphBuffers(&Section->GraphState.Buffers, drawInfo, context->DiskEntry->ReadBuffer.Count);
 
             if (!Section->GraphState.Valid)
@@ -850,7 +853,7 @@ VOID DiskDeviceSysInfoInitializing(
     _In_ _Assume_refs_(1) PDV_DISK_ENTRY DiskEntry
     )
 {
-    static PH_STRINGREF text = PH_STRINGREF_INIT(L"Unknown");
+    static CONST PH_STRINGREF text = PH_STRINGREF_INIT(L"Unknown");
     PDV_DISK_SYSINFO_CONTEXT context;
     PH_SYSINFO_SECTION section;
 

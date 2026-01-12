@@ -21,7 +21,7 @@ static ProcessInfo* GetProcessInfo(
     if (newProcess)
     {
         PhMoveReference(
-            reinterpret_cast<PVOID*>(&processInfo->ProcessItem),
+            &processInfo->ProcessItem,
             PhReferenceProcessItem(UlongToHandle(ProcessId))
             );
     }
@@ -51,7 +51,7 @@ static void CheckForTerminatedRealtimeProcesses(
             PhQueryPerformanceCounter(&performanceCounter);
             terminatedProcesses->emplace_back(processId, performanceCounter.QuadPart);
 
-            PhClearReference(reinterpret_cast<PVOID*>(&processInfo->ProcessItem));
+            PhClearReference(&processInfo->ProcessItem);
         }
     }
 }
@@ -357,6 +357,7 @@ VOID PresentMonUpdateProcessStats(
     }
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS PresentMonOutputThread(
     _In_ PVOID ThreadParameter
     )
@@ -406,7 +407,7 @@ NTSTATUS PresentMonOutputThread(
 
        if (processInfo->ProcessItem)
        {
-           PhClearReference(reinterpret_cast<PVOID*>(&processInfo->ProcessItem));
+           PhClearReference(&processInfo->ProcessItem);
        }
     }
 
@@ -441,6 +442,7 @@ VOID StopOutputThread(
     //NtWaitForSingleObject(OutputThreadHandle, FALSE, nullptr);
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 static NTSTATUS PresentMonTraceThread(
     _In_ PVOID ThreadParameter
     )
@@ -465,7 +467,9 @@ static NTSTATUS PresentMonTraceThread(
         }
 
         if (!QuitOutputThread)
+        {
             PhDelayExecution(1000);
+        }
     }
 
     return STATUS_SUCCESS;

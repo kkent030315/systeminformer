@@ -169,7 +169,7 @@ KphReadVirtualMemory(
     _In_ PVOID BaseAddress,
     _Out_writes_bytes_(BufferSize) PVOID Buffer,
     _In_ SIZE_T BufferSize,
-    _Inout_opt_ PSIZE_T NumberOfBytesRead
+    _Out_opt_ PSIZE_T NumberOfBytesRead
     );
 
 PHLIBAPI
@@ -387,7 +387,7 @@ KphAlpcQueryInformation(
 PHLIBAPI
 NTSTATUS
 NTAPI
-KphAlpcQueryComminicationsNamesInfo(
+KphAlpcQueryCommunicationsNamesInfo(
     _In_ HANDLE ProcessHandle,
     _In_ HANDLE PortHandle,
     _Out_ PKPH_ALPC_COMMUNICATION_NAMES_INFORMATION* Names

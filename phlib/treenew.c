@@ -36,7 +36,11 @@
 #include <treenewp.h>
 #include <vssym32.h>
 
-BOOLEAN PhTreeNewInitialization(
+/**
+ * Initializes the treenew window class.
+ * \return RTL_ATOM Returns an atom representing the initialized window class.
+ */
+RTL_ATOM PhTreeNewInitialization(
     VOID
     )
 {
@@ -44,41 +48,47 @@ BOOLEAN PhTreeNewInitialization(
 
     memset(&wcex, 0, sizeof(WNDCLASSEX));
     wcex.cbSize = sizeof(WNDCLASSEX);
-    wcex.style = CS_DBLCLKS | CS_GLOBALCLASS | CS_PARENTDC;
+    wcex.style = CS_DBLCLKS | CS_GLOBALCLASS;
     wcex.lpfnWndProc = PhTnpWndProc;
     wcex.cbClsExtra = 0;
     wcex.cbWndExtra = sizeof(PVOID);
-    wcex.hInstance = PhInstanceHandle;
+    wcex.hInstance = NtCurrentImageBase();
     wcex.hCursor = PhLoadCursor(NULL, IDC_ARROW);
     wcex.lpszClassName = PH_TREENEW_CLASSNAME;
 
-    if (RegisterClassEx(&wcex) == INVALID_ATOM)
-        return FALSE;
-
-    return TRUE;
+    return RegisterClassEx(&wcex);
 }
 
+/**
+ * Window procedure for the treenew control.
+ *
+ * \param WindowHandle Handle to the window receiving the message.
+ * \param WindowMessage The message identifier.
+ * \param wParam Additional message-specific information (depends on the message).
+ * \param lParam Additional message-specific information (depends on the message).
+ * \return The result of the message processing (depends on the message).
+ */
 LRESULT CALLBACK PhTnpWndProc(
-    _In_ HWND hwnd,
-    _In_ UINT uMsg,
+    _In_ HWND WindowHandle,
+    _In_ UINT WindowMessage,
     _In_ WPARAM wParam,
     _In_ LPARAM lParam
     )
 {
     PPH_TREENEW_CONTEXT context;
 
-    if (uMsg == WM_NCCREATE)
+    if (WindowMessage == WM_NCCREATE)
     {
         context = PhTnpCreateTreeNewContext();
-        PhSetWindowContextEx(hwnd, context);
+        PhSetWindowContextEx(WindowHandle, context);
     }
     else
     {
-        context = PhGetWindowContextEx(hwnd);
+        context = PhGetWindowContextEx(WindowHandle);
     }
 
     if (!context)
-        return DefWindowProc(hwnd, uMsg, wParam, lParam);
+        return DefWindowProc(WindowHandle, WindowMessage, wParam, lParam);
 
     if (context->Tracking && (GetAsyncKeyState(VK_ESCAPE) & 0x1))
     {
@@ -88,47 +98,47 @@ LRESULT CALLBACK PhTnpWndProc(
     // Note: if we have suspended restructuring, we *cannot* access any nodes, because all node
     // pointers are now invalid. Below, we disable all input.
 
-    switch (uMsg)
+    switch (WindowMessage)
     {
     case WM_CREATE:
         {
-            if (!PhTnpOnCreate(hwnd, context, (CREATESTRUCT *)lParam))
+            if (!PhTnpOnCreate(WindowHandle, context, (CREATESTRUCT *)lParam))
                 return -1;
         }
         return 0;
     case WM_DESTROY:
         {
-            context->Callback(hwnd, TreeNewDestroying, NULL, NULL, context->CallbackContext);
+            context->Callback(WindowHandle, TreeNewDestroying, NULL, NULL, context->CallbackContext);
         }
         return 0;
     case WM_NCDESTROY:
         {
-            PhRemoveWindowContextEx(hwnd);
+            PhRemoveWindowContextEx(WindowHandle);
 
             PhTnpDestroyTreeNewContext(context);
         }
         return 0;
     case WM_SIZE:
         {
-            PhTnpOnSize(hwnd, context);
+            PhTnpOnSize(WindowHandle, context);
         }
         break;
     case WM_ERASEBKGND:
         return TRUE;
     case WM_PAINT:
         {
-            PhTnpOnPaint(hwnd, context);
+            PhTnpOnPaint(WindowHandle, context);
         }
         return 0;
     case WM_PRINTCLIENT:
         {
             if (!context->SuspendUpdateStructure)
-                PhTnpOnPrintClient(hwnd, context, (HDC)wParam, (ULONG)lParam);
+                PhTnpOnPrintClient(WindowHandle, context, (HDC)wParam, (ULONG)lParam);
         }
         return 0;
     case WM_NCPAINT:
         {
-            if (PhTnpOnNcPaint(hwnd, context, (HRGN)wParam))
+            if (PhTnpOnNcPaint(WindowHandle, context, (HRGN)wParam))
                 return 0;
         }
         break;
@@ -136,31 +146,43 @@ LRESULT CALLBACK PhTnpWndProc(
         return (LRESULT)context->Font;
     case WM_SETFONT:
         {
-            PhTnpOnSetFont(hwnd, context, (HFONT)wParam, LOWORD(lParam));
+            PhTnpOnSetFont(WindowHandle, context, (HFONT)wParam, LOWORD(lParam));
         }
         break;
     case WM_STYLECHANGED:
         {
-            PhTnpOnStyleChanged(hwnd, context, (LONG)wParam, (STYLESTRUCT *)lParam);
+            PhTnpOnStyleChanged(WindowHandle, context, (LONG)wParam, (STYLESTRUCT *)lParam);
         }
         break;
     case WM_SETTINGCHANGE:
         {
-            PhTnpOnSettingChange(hwnd, context);
+            PhTnpOnSettingChange(WindowHandle, context);
         }
         break;
     case WM_THEMECHANGED:
         {
-            PhTnpOnThemeChanged(hwnd, context);
+            PhTnpOnThemeChanged(WindowHandle, context);
         }
         break;
     case WM_DPICHANGED_AFTERPARENT:
         {
-            PhTnpOnDpiChanged(hwnd, context);
+            PhTnpOnDpiChanged(WindowHandle, context);
         }
         break;
     case WM_GETDLGCODE:
-        return PhTnpOnGetDlgCode(hwnd, context, (ULONG)wParam, (PMSG)lParam);
+        {
+            return PhTnpOnGetDlgCode(WindowHandle, context, (ULONG)wParam, (PMSG)lParam);
+        }
+        break;
+    case WM_ACTIVATE:
+        {
+            if (LOWORD(wParam) == WA_INACTIVE)
+            {
+                // Hide tooltip when window is deactivated
+                PhTnpPopTooltip(context);
+            }
+        }
+        break;
     case WM_SETFOCUS:
         {
             context->HasFocus = TRUE;
@@ -174,18 +196,21 @@ LRESULT CALLBACK PhTnpWndProc(
 
             context->HasFocus = FALSE;
 
+            // Immediately hide tooltip on focus loss.
+            PhTnpPopTooltip(context);
+
             InvalidateRect(context->Handle, NULL, FALSE);
         }
         return 0;
     case WM_SETCURSOR:
         {
-            if (PhTnpOnSetCursor(hwnd, context, (HWND)wParam))
+            if (PhTnpOnSetCursor(WindowHandle, context, (HWND)wParam, LOWORD(lParam), HIWORD(lParam)))
                 return TRUE;
         }
         break;
     case WM_TIMER:
         {
-            PhTnpOnTimer(hwnd, context, (ULONG)wParam);
+            PhTnpOnTimer(WindowHandle, context, (ULONG)wParam);
         }
         return 0;
     case WM_MOUSEMOVE:
@@ -197,7 +222,7 @@ LRESULT CALLBACK PhTnpWndProc(
                 context->SuspendUpdateMoveMouse = TRUE;
             else
             {
-                PhTnpOnMouseMove(hwnd, context, (ULONG)wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+                PhTnpOnMouseMove(WindowHandle, context, (ULONG)wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
             }
         }
         break;
@@ -218,7 +243,7 @@ LRESULT CALLBACK PhTnpWndProc(
             //}
 
             if (!context->SuspendUpdateStructure)
-                PhTnpOnMouseLeave(hwnd, context);
+                PhTnpOnMouseLeave(WindowHandle, context);
         }
         break;
     case WM_LBUTTONDOWN:
@@ -232,84 +257,84 @@ LRESULT CALLBACK PhTnpWndProc(
     case WM_MBUTTONDBLCLK:
         {
             if (!context->SuspendUpdateStructure)
-                PhTnpOnXxxButtonXxx(hwnd, context, uMsg, (ULONG)wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+                PhTnpOnXxxButtonXxx(WindowHandle, context, WindowMessage, (ULONG)wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         }
         break;
     case WM_CAPTURECHANGED:
         {
-            PhTnpOnCaptureChanged(hwnd, context);
+            PhTnpOnCaptureChanged(WindowHandle, context);
         }
         break;
     case WM_KEYDOWN:
         {
             if (!context->SuspendUpdateStructure)
-                PhTnpOnKeyDown(hwnd, context, (ULONG)wParam, (ULONG)lParam);
+                PhTnpOnKeyDown(WindowHandle, context, (ULONG)wParam, (ULONG)lParam);
         }
         break;
     case WM_CHAR:
         {
             if (!context->SuspendUpdateStructure)
-                PhTnpOnChar(hwnd, context, (ULONG)wParam, (ULONG)lParam);
+                PhTnpOnChar(WindowHandle, context, (ULONG)wParam, (ULONG)lParam);
         }
         return 0;
     case WM_MOUSEWHEEL:
         {
-            PhTnpOnMouseWheel(hwnd, context, (SHORT)HIWORD(wParam), LOWORD(wParam), GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+            PhTnpOnMouseWheel(WindowHandle, context, (SHORT)HIWORD(wParam), LOWORD(wParam), GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         }
         break;
     case WM_MOUSEHWHEEL:
         {
-            PhTnpOnMouseHWheel(hwnd, context, (SHORT)HIWORD(wParam), LOWORD(wParam), GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+            PhTnpOnMouseHWheel(WindowHandle, context, (SHORT)HIWORD(wParam), LOWORD(wParam), GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         }
         break;
     case WM_CONTEXTMENU:
         {
             if (!context->SuspendUpdateStructure)
-                PhTnpOnContextMenu(hwnd, context, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+                PhTnpOnContextMenu(WindowHandle, context, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         }
         return 0;
     case WM_VSCROLL:
         {
-            PhTnpOnVScroll(hwnd, context, LOWORD(wParam), HIWORD(wParam));
+            PhTnpOnVScroll(WindowHandle, context, LOWORD(wParam), HIWORD(wParam));
         }
         return 0;
     case WM_HSCROLL:
         {
-            PhTnpOnHScroll(hwnd, context, LOWORD(wParam), HIWORD(wParam));
+            PhTnpOnHScroll(WindowHandle, context, LOWORD(wParam), HIWORD(wParam));
         }
         return 0;
     case WM_NOTIFY:
         {
             LRESULT result;
 
-            if (PhTnpOnNotify(hwnd, context, (NMHDR *)lParam, &result))
+            if (PhTnpOnNotify(WindowHandle, context, (NMHDR *)lParam, &result))
                 return result;
         }
         break;
     case WM_MEASUREITEM:
-        if (context->ThemeSupport && PhThemeWindowMeasureItem(hwnd, (LPMEASUREITEMSTRUCT)lParam))
+        if (context->ThemeSupport && PhThemeWindowMeasureItem(WindowHandle, (LPMEASUREITEMSTRUCT)lParam))
             return TRUE;
         break;
     case WM_DRAWITEM:
-        if (PhThemeWindowDrawItem(hwnd, (LPDRAWITEMSTRUCT)lParam))
+        if (PhThemeWindowDrawItem(WindowHandle, (LPDRAWITEMSTRUCT)lParam))
             return TRUE;
         break;
     case WM_CTLCOLORSCROLLBAR:
         if (context->ThemeSupport)
-            return HANDLE_WM_CTLCOLORSCROLLBAR(hwnd, wParam, lParam, PhWindowThemeControlColor);
+            return HANDLE_WM_CTLCOLORSCROLLBAR(WindowHandle, wParam, lParam, PhWindowThemeControlColor);
         break;
     case WM_CTLCOLORSTATIC:
         if (context->ThemeSupport)
-            return HANDLE_WM_CTLCOLORSTATIC(hwnd, wParam, lParam, PhWindowThemeControlColor);
+            return HANDLE_WM_CTLCOLORSTATIC(WindowHandle, wParam, lParam, PhWindowThemeControlColor);
         break;
     }
 
-    if (uMsg >= TNM_FIRST && uMsg <= TNM_LAST)
+    if (WindowMessage >= TNM_FIRST && WindowMessage <= TNM_LAST)
     {
-        return PhTnpOnUserMessage(hwnd, context, uMsg, wParam, lParam);
+        return PhTnpOnUserMessage(WindowHandle, context, WindowMessage, wParam, lParam);
     }
 
-    switch (uMsg)
+    switch (WindowMessage)
     {
     case WM_MOUSEMOVE:
     case WM_LBUTTONDOWN:
@@ -323,8 +348,8 @@ LRESULT CALLBACK PhTnpWndProc(
             {
                 MSG message;
 
-                message.hwnd = hwnd;
-                message.message = uMsg;
+                message.hwnd = WindowHandle;
+                message.message = WindowMessage;
                 message.wParam = wParam;
                 message.lParam = lParam;
                 SendMessage(context->TooltipsHandle, TTM_RELAYEVENT, 0, (LPARAM)&message);
@@ -333,11 +358,22 @@ LRESULT CALLBACK PhTnpWndProc(
         break;
     }
 
-    return DefWindowProc(hwnd, uMsg, wParam, lParam);
+    return DefWindowProc(WindowHandle, WindowMessage, wParam, lParam);
 }
 
+/**
+ * Default null callback function for the treenew control.
+ *
+ * \param WindowHandle Handle to the treenew window.
+ * \param Message The treenew message identifier.
+ * \param Parameter1 First message-specific parameter.
+ * \param Parameter2 Second message-specific parameter.
+ * \param Context User-defined context pointer.
+ * \return Always returns FALSE.
+ */
+_Function_class_(PH_TREENEW_CALLBACK)
 BOOLEAN NTAPI PhTnpNullCallback(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PH_TREENEW_MESSAGE Message,
     _In_opt_ PVOID Parameter1,
     _In_opt_ PVOID Parameter2,
@@ -347,6 +383,10 @@ BOOLEAN NTAPI PhTnpNullCallback(
     return FALSE;
 }
 
+/**
+ * Creates a new PPH_TREENEW_CONTEXT structure for use with the treenew control.
+ * \return A pointer to the newly created PPH_TREENEW_CONTEXT structure.
+ */
 PPH_TREENEW_CONTEXT PhTnpCreateTreeNewContext(
     VOID
     )
@@ -369,6 +409,10 @@ PPH_TREENEW_CONTEXT PhTnpCreateTreeNewContext(
    return context;
 }
 
+/**
+ * Destroys a treenew context.
+ * \param Context A pointer to the PPH_TREENEW_CONTEXT structure to be destroyed.
+ */
 VOID PhTnpDestroyTreeNewContext(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -416,8 +460,16 @@ VOID PhTnpDestroyTreeNewContext(
     PhFree(Context);
 }
 
+/**
+ * Handles the creation message of a treenew control.
+ *
+ * \param WindowHandle The handle to the window being created for the tree new control.
+ * \param Context A pointer to the PPH_TREENEW_CONTEXT structure that holds the context for the tree new control.
+ * \param CreateStruct A pointer to a constant CREATESTRUCT structure containing the creation parameters.
+ * \return TRUE if the creation and initialization were successful; otherwise, FALSE.
+ */
 BOOLEAN PhTnpOnCreate(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ CONST CREATESTRUCT *CreateStruct
     )
@@ -425,7 +477,7 @@ BOOLEAN PhTnpOnCreate(
     ULONG headerStyle;
     PPH_TREENEW_CREATEPARAMS createParamaters;
 
-    Context->Handle = hwnd;
+    Context->Handle = WindowHandle;
     Context->InstanceHandle = CreateStruct->hInstance;
     Context->Style = CreateStruct->style;
     Context->ExtendedStyle = CreateStruct->dwExStyle;
@@ -462,7 +514,7 @@ BOOLEAN PhTnpOnCreate(
         if (RTL_CONTAINS_FIELD(createParamaters, createParamaters->Size, RowHeight) && createParamaters->RowHeight)
         {
             Context->CustomRowHeight = TRUE;
-            Context->RowHeight = max(createParamaters->RowHeight, 15);
+            Context->RowHeight = max(createParamaters->RowHeight, 1);
         }
     }
     else
@@ -475,7 +527,7 @@ BOOLEAN PhTnpOnCreate(
     if (Context->Style & TN_STYLE_CUSTOM_HEADERDRAW)
         Context->HeaderCustomDraw = TRUE;
 
-    if (!(Context->FixedHeaderHandle = CreateWindow(
+    if (!(Context->FixedHeaderHandle = PhCreateWindow(
         WC_HEADER,
         NULL,
         WS_CHILD | WS_CLIPSIBLINGS | headerStyle,
@@ -483,7 +535,7 @@ BOOLEAN PhTnpOnCreate(
         0,
         0,
         0,
-        hwnd,
+        WindowHandle,
         NULL,
         CreateStruct->hInstance,
         NULL
@@ -495,7 +547,7 @@ BOOLEAN PhTnpOnCreate(
     if (!(Context->Style & TN_STYLE_NO_COLUMN_REORDER))
         headerStyle |= HDS_DRAGDROP;
 
-    if (!(Context->HeaderHandle = CreateWindow(
+    if (!(Context->HeaderHandle = PhCreateWindow(
         WC_HEADER,
         NULL,
         WS_CHILD | WS_CLIPSIBLINGS | headerStyle,
@@ -503,7 +555,7 @@ BOOLEAN PhTnpOnCreate(
         0,
         0,
         0,
-        hwnd,
+        WindowHandle,
         NULL,
         CreateStruct->hInstance,
         NULL
@@ -512,7 +564,7 @@ BOOLEAN PhTnpOnCreate(
         return FALSE;
     }
 
-    if (!(Context->VScrollHandle = CreateWindow(
+    if (!(Context->VScrollHandle = PhCreateWindow(
         WC_SCROLLBAR,
         NULL,
         WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE | SBS_VERT,
@@ -520,7 +572,7 @@ BOOLEAN PhTnpOnCreate(
         0,
         0,
         0,
-        hwnd,
+        WindowHandle,
         NULL,
         CreateStruct->hInstance,
         NULL
@@ -529,7 +581,7 @@ BOOLEAN PhTnpOnCreate(
         return FALSE;
     }
 
-    if (!(Context->HScrollHandle = CreateWindow(
+    if (!(Context->HScrollHandle = PhCreateWindow(
         WC_SCROLLBAR,
         NULL,
         WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE | SBS_HORZ,
@@ -537,7 +589,7 @@ BOOLEAN PhTnpOnCreate(
         0,
         0,
         0,
-        hwnd,
+        WindowHandle,
         NULL,
         CreateStruct->hInstance,
         NULL
@@ -546,7 +598,7 @@ BOOLEAN PhTnpOnCreate(
         return FALSE;
     }
 
-    if (!(Context->FillerBoxHandle = CreateWindow(
+    if (!(Context->FillerBoxHandle = PhCreateWindow(
         WC_STATIC,
         NULL,
         WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
@@ -554,7 +606,7 @@ BOOLEAN PhTnpOnCreate(
         0,
         0,
         0,
-        hwnd,
+        WindowHandle,
         NULL,
         CreateStruct->hInstance,
         NULL
@@ -562,6 +614,12 @@ BOOLEAN PhTnpOnCreate(
     {
         return FALSE;
     }
+
+#if defined(DEBUG)
+    CLIENT_ID clientId;
+    assert(NT_SUCCESS(PhGetWindowClientId(WindowHandle, &clientId)));
+    Context->UniqueThread = clientId.UniqueThread;
+#endif
 
     PhTnpUpdateSystemMetrics(Context);
     PhTnpSetFont(Context, NULL, FALSE); // use default font
@@ -570,12 +628,19 @@ BOOLEAN PhTnpOnCreate(
     return TRUE;
 }
 
+/**
+ * Handles the WM_SIZE message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window being resized.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
 VOID PhTnpOnSize(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context
     )
 {
-    GetClientRect(hwnd, &Context->ClientRect);
+    if (!PhGetClientRect(WindowHandle, &Context->ClientRect))
+        return;
 
     if (Context->BufferedContext && (
         Context->BufferedContextRect.right < Context->ClientRect.right ||
@@ -593,15 +658,23 @@ VOID PhTnpOnSize(
 
         memset(&toolInfo, 0, sizeof(TOOLINFO));
         toolInfo.cbSize = sizeof(TOOLINFO);
-        toolInfo.hwnd = hwnd;
+        toolInfo.hwnd = WindowHandle;
         toolInfo.uId = TNP_TOOLTIPS_ITEM;
         toolInfo.rect = Context->ClientRect;
         SendMessage(Context->TooltipsHandle, TTM_NEWTOOLRECT, 0, (LPARAM)&toolInfo);
     }
 }
 
+/**
+ * Handles the WM_SETFONT message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param Font Handle to the font to set, or NULL for default.
+ * \param Redraw Whether to redraw the control after setting the font.
+ */
 VOID PhTnpOnSetFont(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_opt_ HFONT Font,
     _In_ LOGICAL Redraw
@@ -611,8 +684,16 @@ VOID PhTnpOnSetFont(
     PhTnpLayout(Context);
 }
 
+/**
+ * Handles the WM_STYLECHANGED message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param Type Specifies whether the style or extended style changed.
+ * \param StyleStruct Pointer to a STYLESTRUCT structure with style information.
+ */
 VOID PhTnpOnStyleChanged(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG Type,
     _In_ STYLESTRUCT *StyleStruct
@@ -622,8 +703,14 @@ VOID PhTnpOnStyleChanged(
         Context->ExtendedStyle = StyleStruct->styleNew;
 }
 
+/**
+ * Handles the WM_SETTINGCHANGE message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
 VOID PhTnpOnSettingChange(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context
     )
 {
@@ -632,16 +719,28 @@ VOID PhTnpOnSettingChange(
     PhTnpLayout(Context);
 }
 
+/**
+ * Handles the WM_THEMECHANGED message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
 VOID PhTnpOnThemeChanged(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context
     )
 {
     PhTnpUpdateThemeData(Context);
 }
 
+/**
+ * Handles the WM_DPICHANGED_AFTERPARENT message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
 VOID PhTnpOnDpiChanged(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context
     )
 {
@@ -654,13 +753,32 @@ VOID PhTnpOnDpiChanged(
     PhTnpUpdateThemeData(Context);
     PhTnpUpdateColumnHeadersDpiChanged(Context, oldWindowDpi, Context->WindowDpi);
 
+    {
+        PH_TREENEW_DPICHANGED_EVENT dpiChangedEvent;
+
+        memset(&dpiChangedEvent, 0, sizeof(PH_TREENEW_DPICHANGED_EVENT));
+        dpiChangedEvent.OldWindowDpi = oldWindowDpi;
+        dpiChangedEvent.NewWindowDpi = Context->WindowDpi;
+
+        Context->Callback(Context->Handle, TreeNewDpiChanged, &dpiChangedEvent, NULL, Context->CallbackContext);
+    }
+
     PhTnpSetRedraw(Context, TRUE);
 
     PhTnpLayout(Context);
 }
 
+/**
+ * Handles the WM_GETDLGCODE message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param VirtualKey The virtual key code.
+ * \param Message Optional pointer to a MSG structure.
+ * \return The dialog code flags.
+ */
 ULONG PhTnpOnGetDlgCode(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG VirtualKey,
     _In_opt_ PMSG Message
@@ -668,7 +786,7 @@ ULONG PhTnpOnGetDlgCode(
 {
     ULONG code = 0;
 
-    if (Context->Callback(hwnd, TreeNewGetDialogCode, UlongToPtr(VirtualKey), &code, Context->CallbackContext))
+    if (Context->Callback(WindowHandle, TreeNewGetDialogCode, UlongToPtr(VirtualKey), &code, Context->CallbackContext))
     {
         return code;
     }
@@ -676,8 +794,14 @@ ULONG PhTnpOnGetDlgCode(
     return DLGC_WANTARROWS | DLGC_WANTCHARS;
 }
 
+/**
+ * Handles the WM_PAINT message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
 VOID PhTnpOnPaint(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context
     )
 {
@@ -685,14 +809,14 @@ VOID PhTnpOnPaint(
     HDC hdc;
     PAINTSTRUCT paintStruct;
 
-    if (GetUpdateRect(hwnd, &updateRect, FALSE) && (updateRect.left | updateRect.right | updateRect.top | updateRect.bottom))
+    if (GetUpdateRect(WindowHandle, &updateRect, FALSE) && (updateRect.left | updateRect.right | updateRect.top | updateRect.bottom))
     {
         if (Context->EnableRedraw <= 0)
         {
             HRGN updateRegion;
 
             updateRegion = CreateRectRgn(0, 0, 0, 0);
-            GetUpdateRgn(hwnd, updateRegion, FALSE);
+            GetUpdateRgn(WindowHandle, updateRegion, FALSE);
 
             if (!Context->SuspendUpdateRegion)
             {
@@ -705,13 +829,13 @@ VOID PhTnpOnPaint(
             }
 
             // Pretend we painted something; this ensures the update region is validated properly.
-            if (BeginPaint(hwnd, &paintStruct))
-                EndPaint(hwnd, &paintStruct);
+            if (BeginPaint(WindowHandle, &paintStruct))
+                EndPaint(WindowHandle, &paintStruct);
 
             return;
         }
 
-        if (hdc = BeginPaint(hwnd, &paintStruct))
+        if (hdc = BeginPaint(WindowHandle, &paintStruct))
         {
             updateRect = paintStruct.rcPaint;
 
@@ -725,7 +849,7 @@ VOID PhTnpOnPaint(
 
             if (Context->BufferedContext)
             {
-                PhTnpPaint(hwnd, Context, Context->BufferedContext, &updateRect);
+                PhTnpPaint(WindowHandle, Context, Context->BufferedContext, &updateRect);
                 BitBlt(
                     hdc,
                     updateRect.left,
@@ -740,26 +864,42 @@ VOID PhTnpOnPaint(
             }
             else
             {
-                PhTnpPaint(hwnd, Context, hdc, &updateRect);
+                PhTnpPaint(WindowHandle, Context, hdc, &updateRect);
             }
 
-            EndPaint(hwnd, &paintStruct);
+            EndPaint(WindowHandle, &paintStruct);
         }
     }
 }
 
+/**
+ * Handles the WM_PRINTCLIENT message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param hdc Device context to print to.
+ * \param Flags Print flags.
+ */
 VOID PhTnpOnPrintClient(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ HDC hdc,
     _In_ ULONG Flags
     )
 {
-    PhTnpPaint(hwnd, Context, hdc, &Context->ClientRect);
+    PhTnpPaint(WindowHandle, Context, hdc, &Context->ClientRect);
 }
 
+/**
+ * Handles the WM_NCPAINT message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param UpdateRegion Optional region to update.
+ * \return TRUE if the non-client area was painted, FALSE otherwise.
+ */
 BOOLEAN PhTnpOnNcPaint(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_opt_ HRGN UpdateRegion
     )
@@ -777,15 +917,15 @@ BOOLEAN PhTnpOnNcPaint(
 
         // Note the use of undocumented flags below. GetDCEx doesn't work without these.
 
-        flags = DCX_WINDOW | DCX_LOCKWINDOWUPDATE | 0x10000;
+        flags = DCX_WINDOW | DCX_CACHE | DCX_USESTYLE;
 
         if (UpdateRegion)
-            flags |= DCX_INTERSECTRGN | 0x40000;
+            flags |= DCX_INTERSECTRGN | DCX_NODELETERGN;
 
-        if (hdc = GetDCEx(hwnd, UpdateRegion, flags))
+        if (hdc = GetDCEx(WindowHandle, UpdateRegion, flags))
         {
             PhTnpDrawThemedBorder(Context, hdc);
-            ReleaseDC(hwnd, hdc);
+            ReleaseDC(WindowHandle, hdc);
             return TRUE;
         }
     }
@@ -793,17 +933,30 @@ BOOLEAN PhTnpOnNcPaint(
     return FALSE;
 }
 
+/**
+ * Handles the WM_SETCURSOR message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param CursorWindowHandle Handle to the window receiving the cursor.
+ * \param HitTest Hit test value.
+ * \param Source Source of the cursor event.
+ * \return TRUE if the cursor was set, FALSE otherwise.
+ */
 BOOLEAN PhTnpOnSetCursor(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
-    _In_ HWND CursorWindowHandle
+    _In_ HWND CursorWindowHandle,
+    _In_ ULONG HitTest,
+    _In_ ULONG Source
     )
 {
     POINT point;
 
-    PhTnpGetMessagePos(hwnd, &point);
-
-    if (TNP_HIT_TEST_FIXED_DIVIDER(point.x, Context))
+    if (
+        PhGetClientPos(WindowHandle, &point) && 
+        TNP_HIT_TEST_FIXED_DIVIDER(point.x, Context)
+        )
     {
         PhSetCursor(PhLoadDividerCursor());
         return TRUE;
@@ -818,8 +971,15 @@ BOOLEAN PhTnpOnSetCursor(
     return FALSE;
 }
 
+/**
+ * Handles the WM_TIMER message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param Id Timer identifier.
+ */
 VOID PhTnpOnTimer(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Id
     )
@@ -841,10 +1001,10 @@ VOID PhTnpOnTimer(
             {
                 Context->DividerHot = 100;
                 Context->AnimateDividerFadingIn = FALSE;
-                PhKillTimer(hwnd, TNP_TIMER_ANIMATE_DIVIDER);
+                PhKillTimer(WindowHandle, TNP_TIMER_ANIMATE_DIVIDER);
             }
 
-            InvalidateRect(hwnd, &dividerRect, FALSE);
+            InvalidateRect(WindowHandle, &dividerRect, FALSE);
         }
         else if (Context->AnimateDividerFadingOut)
         {
@@ -852,31 +1012,61 @@ VOID PhTnpOnTimer(
             {
                 Context->DividerHot = 0;
                 Context->AnimateDividerFadingOut = FALSE;
-                PhKillTimer(hwnd, TNP_TIMER_ANIMATE_DIVIDER);
+                PhKillTimer(WindowHandle, TNP_TIMER_ANIMATE_DIVIDER);
             }
             else
             {
                 Context->DividerHot -= TNP_ANIMATE_DIVIDER_DECREMENT;
             }
 
-            InvalidateRect(hwnd, &dividerRect, FALSE);
+            InvalidateRect(WindowHandle, &dividerRect, FALSE);
         }
     }
 }
 
+/**
+ * Handles the WM_MOUSEMOVE message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param VirtualKeys Virtual key flags.
+ * \param CursorX X coordinate of the cursor.
+ * \param CursorY Y coordinate of the cursor.
+ */
 VOID PhTnpOnMouseMove(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG VirtualKeys,
     _In_ LONG CursorX,
     _In_ LONG CursorY
     )
 {
+    if (FlagOn(Context->Style, TN_STYLE_DRAG_REORDER_ROWS))
+    {
+        // Reorder drag in progress: update target and caret, swallow normal processing (dmex)
+
+        if (Context->ReorderDragActive)
+        {
+            if (Context->ReorderJustStarted)
+            {
+                Context->ReorderJustStarted = FALSE;
+            }
+
+            if (Context->ReorderCursor)
+            {
+                PhSetCursor(Context->ReorderCursor);
+            }
+
+            PhTnpReorderUpdate(Context, CursorX, CursorY);
+            return;
+        }
+    }
+
     TRACKMOUSEEVENT trackMouseEvent;
 
     trackMouseEvent.cbSize = sizeof(TRACKMOUSEEVENT);
     trackMouseEvent.dwFlags = TME_LEAVE;
-    trackMouseEvent.hwndTrack = hwnd;
+    trackMouseEvent.hwndTrack = WindowHandle;
     trackMouseEvent.dwHoverTime = 0;
     TrackMouseEvent(&trackMouseEvent);
 
@@ -891,8 +1081,14 @@ VOID PhTnpOnMouseMove(
     PhTnpProcessMoveMouse(Context, CursorX, CursorY);
 }
 
+/**
+ * Handles the WM_MOUSELEAVE message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
 VOID PhTnpOnMouseLeave(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context
     )
 {
@@ -930,8 +1126,18 @@ VOID PhTnpOnMouseLeave(
     }
 }
 
+/**
+ * Handles mouse button messages (down, up, double-click) for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param Message Mouse message identifier.
+ * \param VirtualKeys Virtual key flags.
+ * \param CursorX X coordinate of the cursor.
+ * \param CursorY Y coordinate of the cursor.
+ */
 VOID PhTnpOnXxxButtonXxx(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Message,
     _In_ ULONG VirtualKeys,
@@ -951,7 +1157,7 @@ VOID PhTnpOnXxxButtonXxx(
     // Focus
 
     if (Message == WM_LBUTTONDOWN || Message == WM_RBUTTONDOWN)
-        SetFocus(hwnd);
+        SetFocus(WindowHandle);
 
     // Divider tracking
 
@@ -967,9 +1173,9 @@ VOID PhTnpOnXxxButtonXxx(
                 Context->Tracking = TRUE;
                 Context->TrackStartX = CursorX;
                 Context->TrackOldFixedWidth = Context->FixedWidth;
-                SetCapture(hwnd);
+                SetCapture(WindowHandle);
 
-                PhSetTimer(hwnd, TNP_TIMER_NULL, 100, NULL); // make sure we get messages once in a while so we can detect the escape key
+                PhSetTimer(WindowHandle, TNP_TIMER_NULL, 100, NULL); // make sure we get messages once in a while so we can detect the escape key
                 GetAsyncKeyState(VK_ESCAPE);
             }
         }
@@ -999,6 +1205,65 @@ VOID PhTnpOnXxxButtonXxx(
     hitTest.Point.y = CursorY;
     hitTest.InFlags = TN_TEST_COLUMN | TN_TEST_SUBITEM;
     PhTnpHitTest(Context, &hitTest);
+
+    if (FlagOn(Context->Style, TN_STYLE_DRAG_REORDER_ROWS))
+    {
+        // Begin reorder drag if:
+        // - TN_STYLE_DRAG_REORDER_ROWS flag enabled
+        // - Left button down on item content (not plus/minus, not divider)
+        // - Ctrl is held (to avoid conflict with drag selection)
+        if (Message == WM_LBUTTONDOWN &&
+            (VirtualKeys & MK_CONTROL) &&
+            (hitTest.Flags & TN_HIT_ITEM) &&
+            !(hitTest.Flags & (TN_HIT_ITEM_PLUSMINUS | TN_HIT_DIVIDER)))
+        {
+            PH_TREENEW_REORDER_EVENT reorderEvent = { 0 };
+
+            memset(&reorderEvent, 0, sizeof(PH_TREENEW_REORDER_EVENT));
+            reorderEvent.Source = hitTest.Node;
+            reorderEvent.Target = hitTest.Node;
+            reorderEvent.DropAfter = FALSE;
+            reorderEvent.Allow = TRUE;
+
+            Context->Callback(Context->Handle, TreeNewReorderBegin, &reorderEvent, NULL, Context->CallbackContext);
+
+            if (reorderEvent.Allow)
+            {
+                ULONG saveIndex = hitTest.Node ? hitTest.Node->Index : ULONG_MAX;
+                ULONG cancelledByMessage = 0;
+
+                if (PhTnpDetectDrag(Context, CursorX, CursorY, TRUE, &cancelledByMessage))
+                {
+                    // Begin drag-reorder
+                    if (saveIndex != ULONG_MAX && saveIndex < Context->FlatList->Count)
+                    {
+                        PhTnpReorderBegin(Context, saveIndex);
+                        PhTnpReorderUpdateCaretRect(Context);
+                        InvalidateRect(Context->Handle, &Context->ReorderInsertRect, FALSE);
+                        return; // swallow normal selection behavior
+                    }
+                }
+                else
+                {
+                    // If detection consumed up-event, don't duplicate
+                    if (cancelledByMessage == WM_LBUTTONUP)
+                        return;
+                }
+            }
+        }
+
+        // Commit/cancel on mouse up if in reorder mode
+        if (Message == WM_LBUTTONUP && Context->ReorderDragActive)
+        {
+            PhTnpReorderCommit(Context);
+            return;
+        }
+        if (Message == WM_RBUTTONDOWN && Context->ReorderDragActive)
+        {
+            PhTnpReorderCancel(Context);
+            return;
+        }
+    }
 
     controlKey = VirtualKeys & MK_CONTROL;
     shiftKey = VirtualKeys & MK_SHIFT;
@@ -1131,9 +1396,10 @@ VOID PhTnpOnXxxButtonXxx(
                         // event here.
                         // Check if the cursor stayed in the same place.
 
-                        PhTnpGetMessagePos(Context->Handle, &point);
-
-                        if (point.x == CursorX && point.y == CursorY)
+                        if (
+                            PhGetClientPos(Context->Handle, &point) && 
+                            point.x == CursorX && point.y == CursorY
+                            )
                         {
                             PhTnpSendMouseEvent(
                                 Context,
@@ -1160,7 +1426,7 @@ VOID PhTnpOnXxxButtonXxx(
 
                 if (PhTnpGetRowRects(Context, changedStart, changedEnd, TRUE, &rect))
                 {
-                    InvalidateRect(hwnd, &rect, FALSE);
+                    InvalidateRect(WindowHandle, &rect, FALSE);
                 }
             }
 
@@ -1234,23 +1500,53 @@ VOID PhTnpOnXxxButtonXxx(
     }
 }
 
+/**
+ * Handles the WM_CAPTURECHANGED message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
 VOID PhTnpOnCaptureChanged(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context
     )
 {
     Context->Tracking = FALSE;
-    PhKillTimer(hwnd, TNP_TIMER_NULL);
+    PhKillTimer(WindowHandle, TNP_TIMER_NULL);
+
+    if (FlagOn(Context->Style, TN_STYLE_DRAG_REORDER_ROWS))
+    {
+        if (Context->ReorderDragActive && !Context->ReorderJustStarted)
+            PhTnpReorderCancel(Context);
+    }
 }
 
+/**
+ * Handles the WM_KEYDOWN message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param VirtualKey Virtual key code.
+ * \param Data Additional key data.
+ */
 VOID PhTnpOnKeyDown(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG VirtualKey,
     _In_ ULONG Data
     )
 {
     PH_TREENEW_KEY_EVENT keyEvent;
+
+    if (FlagOn(Context->Style, TN_STYLE_DRAG_REORDER_ROWS))
+    {
+        // Cancel reorder drag with ESC
+        if (Context->ReorderDragActive && VirtualKey == VK_ESCAPE)
+        {
+            PhTnpReorderCancel(Context);
+            return;
+        }
+    }
 
     keyEvent.Handled = FALSE;
     keyEvent.VirtualKey = VirtualKey;
@@ -1270,16 +1566,24 @@ VOID PhTnpOnKeyDown(
     {
     case 'A':
         if (GetKeyState(VK_CONTROL) < 0)
-            TreeNew_SelectRange(hwnd, 0, -1);
+            TreeNew_SelectRange(WindowHandle, 0, -1);
         return;
     }
 
     // pass unhandled key presses to parent
-    SendMessage(GetParent(hwnd), WM_KEYDOWN, VirtualKey, Data);
+    SendMessage(GetParent(WindowHandle), WM_KEYDOWN, VirtualKey, Data);
 }
 
+/**
+ * Handles the WM_CHAR message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param Character The character code.
+ * \param Data Additional data.
+ */
 VOID PhTnpOnChar(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Character,
     _In_ ULONG Data
@@ -1292,8 +1596,18 @@ VOID PhTnpOnChar(
     }
 }
 
+/**
+ * Handles the WM_MOUSEWHEEL message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param Distance Wheel delta.
+ * \param VirtualKeys Virtual key flags.
+ * \param CursorX X coordinate of the cursor.
+ * \param CursorY Y coordinate of the cursor.
+ */
 VOID PhTnpOnMouseWheel(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG Distance,
     _In_ ULONG VirtualKeys,
@@ -1313,8 +1627,18 @@ VOID PhTnpOnMouseWheel(
     }
 }
 
+/**
+ * Handles the WM_MOUSEHWHEEL message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param Distance Wheel delta.
+ * \param VirtualKeys Virtual key flags.
+ * \param CursorX X coordinate of the cursor.
+ * \param CursorY Y coordinate of the cursor.
+ */
 VOID PhTnpOnMouseHWheel(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG Distance,
     _In_ ULONG VirtualKeys,
@@ -1325,8 +1649,16 @@ VOID PhTnpOnMouseHWheel(
     PhTnpProcessMouseHWheel(Context, Distance);
 }
 
+/**
+ * Handles the WM_CONTEXTMENU message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param CursorScreenX X coordinate of the context menu (screen coordinates).
+ * \param CursorScreenY Y coordinate of the context menu (screen coordinates).
+ */
 VOID PhTnpOnContextMenu(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG CursorScreenX,
     _In_ LONG CursorScreenY
@@ -1371,7 +1703,7 @@ VOID PhTnpOnContextMenu(
             clientPoint.y = 0;
         }
 
-        GetWindowRect(hwnd, &windowRect);
+        PhGetWindowRect(WindowHandle, &windowRect);
         CursorScreenX = windowRect.left + clientPoint.x;
         CursorScreenY = windowRect.top + clientPoint.y;
     }
@@ -1381,7 +1713,7 @@ VOID PhTnpOnContextMenu(
 
         clientPoint.x = CursorScreenX;
         clientPoint.y = CursorScreenY;
-        ScreenToClient(hwnd, &clientPoint);
+        ScreenToClient(WindowHandle, &clientPoint);
 
         if (clientPoint.y < Context->HeaderHeight)
         {
@@ -1401,12 +1733,20 @@ VOID PhTnpOnContextMenu(
     contextMenu.Column = hitTest.Column;
     contextMenu.KeyboardInvoked = keyboardInvoked;
     Context->ContextMenuActive = TRUE;
-    Context->Callback(hwnd, TreeNewContextMenu, &contextMenu, NULL, Context->CallbackContext);
+    Context->Callback(WindowHandle, TreeNewContextMenu, &contextMenu, NULL, Context->CallbackContext);
     Context->ContextMenuActive = FALSE;
 }
 
+/**
+ * Handles the WM_VSCROLL message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param Request Scroll request type.
+ * \param Position Scroll position.
+ */
 VOID PhTnpOnVScroll(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Request,
     _In_ USHORT Position
@@ -1462,8 +1802,16 @@ VOID PhTnpOnVScroll(
     }
 }
 
+/**
+ * Handles the WM_HSCROLL message for the treenew control.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param Request Scroll request type.
+ * \param Position Scroll position.
+ */
 VOID PhTnpOnHScroll(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Request,
     _In_ USHORT Position
@@ -1519,9 +1867,18 @@ VOID PhTnpOnHScroll(
     }
 }
 
+/**
+ * Handles WM_NOTIFY messages from child controls.
+ *
+ * \param WindowHandle Handle to the treenew window.
+ * \param Context Pointer to the treenew context structure.
+ * \param Header Pointer to the NMHDR notification structure.
+ * \param Result Pointer to receive the message result.
+ * \return TRUE if the message was handled, FALSE otherwise.
+ */
 _Success_(return)
 BOOLEAN PhTnpOnNotify(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ NMHDR *Header,
     _Out_ LRESULT *Result
@@ -1689,11 +2046,11 @@ BOOLEAN PhTnpOnNotify(
                 mouseEvent.ScreenLocation.y = GET_Y_LPARAM(position);
 
                 mouseEvent.Location = mouseEvent.ScreenLocation;
-                ScreenToClient(hwnd, &mouseEvent.Location);
+                ScreenToClient(WindowHandle, &mouseEvent.Location);
                 mouseEvent.HeaderLocation = mouseEvent.ScreenLocation;
                 ScreenToClient(Header->hwndFrom, &mouseEvent.HeaderLocation);
                 mouseEvent.Column = PhTnpHitTestHeader(Context, Header->hwndFrom == Context->FixedHeaderHandle, &mouseEvent.HeaderLocation, NULL);
-                Context->Callback(hwnd, TreeNewHeaderRightClick, &mouseEvent, NULL, Context->CallbackContext);
+                Context->Callback(WindowHandle, TreeNewHeaderRightClick, &mouseEvent, NULL, Context->CallbackContext);
             }
         }
         break;
@@ -1703,9 +2060,16 @@ BOOLEAN PhTnpOnNotify(
             {
                 NMTTDISPINFO *info = (NMTTDISPINFO *)Header;
                 POINT point;
+                PPH_STRING string;
 
-                PhTnpGetMessagePos(hwnd, &point);
-                PhTnpGetTooltipText(Context, &point, &info->lpszText);
+                if (PhGetClientPos(WindowHandle, &point))
+                {
+                    if (PhTnpGetTooltipText(Context, &point, &string))
+                    {
+                        info->lpszText = string->Buffer;
+                        break;
+                    }
+                }
             }
         }
         break;
@@ -1760,8 +2124,18 @@ BOOLEAN PhTnpOnNotify(
     return FALSE;
 }
 
+/**
+ * Processes treenew-specific user messages (TNM_* messages).
+ *
+ * \param WindowHandle Handle to the treenew window.
+ * \param Context Pointer to the treenew context structure.
+ * \param Message The treenew message identifier.
+ * \param WParam First message-specific parameter.
+ * \param LParam Second message-specific parameter.
+ * \return The result of the message processing.
+ */
 LRESULT PhTnpOnUserMessage(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Message,
     _In_ ULONG_PTR WParam,
@@ -1886,7 +2260,7 @@ LRESULT PhTnpOnUserMessage(
             {
                 return TRUE; // Nothing to change (dmex)
             }
-     
+
             if (sortOrder != NoSortOrder)
             {
                 if (!(column = PhTnpLookupColumnById(Context, sortColumn)))
@@ -1976,7 +2350,7 @@ LRESULT PhTnpOnUserMessage(
             if (!PhTnpGetRowRects(Context, node->Index, node->Index, TRUE, &rect))
                 return FALSE;
 
-            InvalidateRect(hwnd, &rect, FALSE);
+            InvalidateRect(WindowHandle, &rect, FALSE);
         }
         return TRUE;
     case TNM_INVALIDATENODES:
@@ -1986,7 +2360,7 @@ LRESULT PhTnpOnUserMessage(
             if (!PhTnpGetRowRects(Context, (ULONG)WParam, (ULONG)LParam, TRUE, &rect))
                 return FALSE;
 
-            InvalidateRect(hwnd, &rect, FALSE);
+            InvalidateRect(WindowHandle, &rect, FALSE);
         }
         return TRUE;
     case TNM_GETFIXEDHEADER:
@@ -2012,7 +2386,7 @@ LRESULT PhTnpOnUserMessage(
 
             if (PhTnpGetRowRects(Context, changedStart, changedEnd, TRUE, &rect))
             {
-                InvalidateRect(hwnd, &rect, FALSE);
+                InvalidateRect(WindowHandle, &rect, FALSE);
             }
         }
         return TRUE;
@@ -2222,21 +2596,90 @@ LRESULT PhTnpOnUserMessage(
        {
             PPH_TREENEW_NODE node = (PPH_TREENEW_NODE)LParam;
 
-            SetFocus(hwnd);
+            SetFocus(WindowHandle);
 
             Context->FocusNode = node; // TNM_SETFOCUSNODE
             Context->MarkNodeIndex = node->Index; // TNM_SETMARKNODE
-            PhTnpOnUserMessage(hwnd, Context, TNM_DESELECTRANGE, 0, -1);
-            PhTnpOnUserMessage(hwnd, Context, TNM_SELECTRANGE, node->Index, node->Index);
+            PhTnpOnUserMessage(WindowHandle, Context, TNM_DESELECTRANGE, 0, -1);
+            PhTnpOnUserMessage(WindowHandle, Context, TNM_SELECTRANGE, node->Index, node->Index);
             PhTnpEnsureVisibleNode(Context, node->Index); // TNM_ENSUREVISIBLE
-            PhTnpOnUserMessage(hwnd, Context, TNM_INVALIDATENODES, node->Index, node->Index);
+            PhTnpOnUserMessage(WindowHandle, Context, TNM_INVALIDATENODES, node->Index, node->Index);
        }
        return TRUE;
+    case TNM_FOCUSVISIBLENODE:
+        {
+            ULONG i;
+            ULONG visibleCount;
+            PPH_TREENEW_NODE node;
+
+            if (Context->SuspendUpdateStructure)
+                visibleCount = 0;
+            else
+                visibleCount = Context->FlatList->Count;
+
+            for (i = 0; i < visibleCount; i++)
+            {
+                node = Context->FlatList->Items[i];
+
+                // Select the first visible node.
+                if (node->Visible)
+                {
+                    SetFocus(WindowHandle);
+
+                    Context->FocusNode = node; // TNM_SETFOCUSNODE
+                    Context->MarkNodeIndex = node->Index; // TNM_SETMARKNODE
+                    PhTnpOnUserMessage(WindowHandle, Context, TNM_DESELECTRANGE, 0, -1);
+                    PhTnpOnUserMessage(WindowHandle, Context, TNM_SELECTRANGE, node->Index, node->Index);
+                    PhTnpEnsureVisibleNode(Context, node->Index); // TNM_ENSUREVISIBLE
+                    PhTnpOnUserMessage(WindowHandle, Context, TNM_INVALIDATENODES, node->Index, node->Index);
+
+                    return TRUE;
+                }
+            }
+        }
+        break;
+    case TNM_GETCELLPARTS:
+        {
+            PPH_TREENEW_GET_CELL_PARTS getCellParts = (PPH_TREENEW_GET_CELL_PARTS)LParam;
+
+            if (getCellParts->Node && getCellParts->Column)
+            {
+                ULONG measureFlags = 0;
+                PH_TREENEW_CELL_PARTS cellparts;
+
+                if (FlagOn(getCellParts->Flags, TN_MEASURE_TEXT))
+                {
+                    measureFlags |= TN_MEASURE_TEXT;
+                }
+
+                RtlZeroMemory(&cellparts, sizeof(PH_TREENEW_CELL_PARTS));
+
+                if (PhTnpGetCellParts(
+                    Context,
+                    getCellParts->Node->Index,
+                    getCellParts->Column,
+                    measureFlags,
+                    &cellparts
+                    ))
+                {
+                    RtlCopyMemory(&getCellParts->Parts, &cellparts, sizeof(PH_TREENEW_CELL_PARTS));
+                    return TRUE;
+                }
+            }
+        }
+        break;
     }
 
     return 0;
 }
 
+/**
+ * Sets the font for the treenew control and updates related metrics.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Font Handle to the font to set, or NULL to use the default font.
+ * \param Redraw TRUE to redraw the control after setting the font, FALSE otherwise.
+ */
 VOID PhTnpSetFont(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_opt_ HFONT Font,
@@ -2274,6 +2717,11 @@ VOID PhTnpSetFont(
     PhTnpUpdateTextMetrics(Context);
 }
 
+/**
+ * Updates the cached system metrics used by the treenew control.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpUpdateSystemMetrics(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -2305,6 +2753,11 @@ VOID PhTnpUpdateSystemMetrics(
         Context->SystemDragY = 2;
 }
 
+/**
+ * Updates the text metrics and row height for the treenew control.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpUpdateTextMetrics(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -2344,6 +2797,11 @@ VOID PhTnpUpdateTextMetrics(
     }
 }
 
+/**
+ * Updates the theme data and colors for the treenew control.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpUpdateThemeData(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -2374,6 +2832,11 @@ VOID PhTnpUpdateThemeData(
     }
 }
 
+/**
+ * Initializes the theme data for the treenew control on first use.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpInitializeThemeData(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -2385,6 +2848,11 @@ VOID PhTnpInitializeThemeData(
     }
 }
 
+/**
+ * Cancels any active tracking operation in the treenew control.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpCancelTrack(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -2393,6 +2861,11 @@ VOID PhTnpCancelTrack(
     ReleaseCapture();
 }
 
+/**
+ * Recalculates the layout of all treenew control elements.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpLayout(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -2455,6 +2928,11 @@ VOID PhTnpLayout(
         InvalidateRect(Context->Handle, NULL, FALSE);
 }
 
+/**
+ * Recalculates the layout of the header controls.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpLayoutHeader(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -2528,16 +3006,30 @@ VOID PhTnpLayoutHeader(
         toolInfo.cbSize = sizeof(TOOLINFO);
         toolInfo.hwnd = Context->FixedHeaderHandle;
         toolInfo.uId = TNP_TOOLTIPS_FIXED_HEADER;
-        GetClientRect(Context->FixedHeaderHandle, &toolInfo.rect);
-        SendMessage(Context->TooltipsHandle, TTM_NEWTOOLRECT, 0, (LPARAM)&toolInfo);
 
+        if (PhGetClientRect(Context->FixedHeaderHandle, &toolInfo.rect))
+        {
+            SendMessage(Context->TooltipsHandle, TTM_NEWTOOLRECT, 0, (LPARAM)&toolInfo);
+        }
+
+        memset(&toolInfo, 0, sizeof(TOOLINFO));
+        toolInfo.cbSize = sizeof(TOOLINFO);
         toolInfo.hwnd = Context->HeaderHandle;
         toolInfo.uId = TNP_TOOLTIPS_HEADER;
-        GetClientRect(Context->HeaderHandle, &toolInfo.rect);
-        SendMessage(Context->TooltipsHandle, TTM_NEWTOOLRECT, 0, (LPARAM)&toolInfo);
+
+        if (PhGetClientRect(Context->HeaderHandle, &toolInfo.rect))
+        {
+            SendMessage(Context->TooltipsHandle, TTM_NEWTOOLRECT, 0, (LPARAM)&toolInfo);
+        }
     }
 }
 
+/**
+ * Sets the width of the fixed column.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param FixedWidth The new width for the fixed column.
+ */
 VOID PhTnpSetFixedWidth(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG FixedWidth
@@ -2565,6 +3057,12 @@ VOID PhTnpSetFixedWidth(
     }
 }
 
+/**
+ * Enables or disables redrawing of the treenew control.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Redraw TRUE to enable redrawing, FALSE to disable.
+ */
 VOID PhTnpSetRedraw(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ BOOLEAN Redraw
@@ -2591,8 +3089,10 @@ VOID PhTnpSetRedraw(
         {
             POINT point;
 
-            PhTnpGetMessagePos(Context->Handle, &point);
-            PhTnpProcessMoveMouse(Context, point.x, point.y);
+            if (PhGetClientPos(Context->Handle, &point))
+            {
+                PhTnpProcessMoveMouse(Context, point.x, point.y);
+            }
         }
 
         Context->SuspendUpdateStructure = FALSE;
@@ -2608,6 +3108,17 @@ VOID PhTnpSetRedraw(
     }
 }
 
+/**
+ * Sends a mouse event notification to the callback function.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Message The mouse event message type.
+ * \param CursorX The X coordinate of the cursor.
+ * \param CursorY The Y coordinate of the cursor.
+ * \param Node Pointer to the node under the cursor, if any.
+ * \param Column Pointer to the column under the cursor, if any.
+ * \param VirtualKeys The state of virtual keys.
+ */
 VOID PhTnpSendMouseEvent(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ PH_TREENEW_MESSAGE Message,
@@ -2628,6 +3139,13 @@ VOID PhTnpSendMouseEvent(
     Context->Callback(Context->Handle, Message, &mouseEvent, NULL, Context->CallbackContext);
 }
 
+/**
+ * Looks up a column by its unique identifier.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Id The column identifier to search for.
+ * \return Pointer to the column structure if found, NULL otherwise.
+ */
 PPH_TREENEW_COLUMN PhTnpLookupColumnById(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Id
@@ -2639,6 +3157,13 @@ PPH_TREENEW_COLUMN PhTnpLookupColumnById(
     return Context->Columns[Id];
 }
 
+/**
+ * Adds a new column to the treenew control.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Column Pointer to the column structure to add.
+ * \return TRUE if the column was added successfully, FALSE otherwise.
+ */
 BOOLEAN PhTnpAddColumn(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ PPH_TREENEW_COLUMN Column
@@ -2717,6 +3242,17 @@ BOOLEAN PhTnpAddColumn(
     return TRUE;
 }
 
+/**
+ * Removes a column from the tree view control by its ID.
+ *
+ * This function deletes the specified column, updates the layout if necessary,
+ * and frees associated resources. The column is removed from the internal columns array,
+ * and the column maps are updated accordingly.
+ *
+ * \param Context Pointer to the tree-new context.
+ * \param Id The ID of the column to remove.
+ * \return TRUE if the column was removed; FALSE if the column was not found.
+ */
 BOOLEAN PhTnpRemoveColumn(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Id
@@ -2746,6 +3282,16 @@ BOOLEAN PhTnpRemoveColumn(
     return TRUE;
 }
 
+/**
+ * Copies the data of a column by its ID into a provided column structure.
+ *
+ * This function looks up the column by ID and copies its data into the output structure.
+ *
+ * \param Context Pointer to the tree-new context.
+ * \param Id The ID of the column to copy.
+ * \param Column Pointer to a PH_TREENEW_COLUMN structure to receive the data.
+ * \return TRUE if the column was found and copied; FALSE otherwise.
+ */
 _Success_(return)
 BOOLEAN PhTnpCopyColumn(
     _In_ PPH_TREENEW_CONTEXT Context,
@@ -2763,6 +3309,19 @@ BOOLEAN PhTnpCopyColumn(
     return TRUE;
 }
 
+/**
+ * Changes the properties of a column by its ID and a mask.
+ *
+ * This function updates the specified properties of a column, such as visibility, width,
+ * alignment, display index, and other attributes, according to the provided mask and column data.
+ * It handles layout and header updates as needed.
+ *
+ * \param Context Pointer to the tree-new context.
+ * \param Mask Bitmask specifying which properties to update.
+ * \param Id The ID of the column to change.
+ * \param Column Pointer to a PH_TREENEW_COLUMN structure containing new values.
+ * \return TRUE if the column was found and updated; FALSE otherwise.
+ */
 BOOLEAN PhTnpChangeColumn(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Mask,
@@ -2890,6 +3449,15 @@ BOOLEAN PhTnpChangeColumn(
     return TRUE;
 }
 
+/**
+ * Expands the allocated columns array for the tree view control.
+ *
+ * This function doubles the size of the columns array when more space is needed,
+ * or initializes it if not already allocated. It ensures that the array is large enough
+ * to accommodate all columns, and zeroes the newly allocated memory.
+ *
+ * \param Context Pointer to the tree-new context.
+ */
 VOID PhTnpExpandAllocatedColumns(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -2930,6 +3498,11 @@ VOID PhTnpExpandAllocatedColumns(
     }
 }
 
+/**
+ * Updates the internal column mapping arrays.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpUpdateColumnMaps(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -2956,7 +3529,10 @@ VOID PhTnpUpdateColumnMaps(
         if (Context->Columns[i]->Visible && !Context->Columns[i]->Fixed && Context->Columns[i]->DisplayIndex != ULONG_MAX)
         {
             if (Context->Columns[i]->DisplayIndex >= Context->NumberOfColumns)
+            {
                 PhRaiseStatus(STATUS_INTERNAL_ERROR);
+                return;
+            }
 
             Context->ColumnsByDisplay[Context->Columns[i]->DisplayIndex] = Context->Columns[i];
         }
@@ -2991,6 +3567,13 @@ VOID PhTnpUpdateColumnMaps(
         Context->LastColumn = NULL;
 }
 
+/**
+ * Inserts a column header into the appropriate header control.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Column Pointer to the column structure.
+ * \return The index of the inserted header item, or -1 on failure.
+ */
 LONG PhTnpInsertColumnHeader(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ PPH_TREENEW_COLUMN Column
@@ -3049,6 +3632,13 @@ LONG PhTnpInsertColumnHeader(
         return Header_InsertItem(Context->HeaderHandle, MAXINT, &item);
 }
 
+/**
+ * Changes the properties of a column header.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Mask Bitmask specifying which properties to update.
+ * \param Column Pointer to the column structure.
+ */
 VOID PhTnpChangeColumnHeader(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Mask,
@@ -3112,6 +3702,12 @@ VOID PhTnpChangeColumnHeader(
         Header_SetItem(Context->HeaderHandle, Column->s.ViewIndex, &item);
 }
 
+/**
+ * Deletes a column header from the header control.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Column Pointer to the column structure.
+ */
 VOID PhTnpDeleteColumnHeader(
     _In_ PPH_TREENEW_CONTEXT Context,
     _Inout_ PPH_TREENEW_COLUMN Column
@@ -3136,6 +3732,11 @@ VOID PhTnpDeleteColumnHeader(
     PhTnpUpdateColumnHeaders(Context);
 }
 
+/**
+ * Updates all column headers to reflect current column states.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpUpdateColumnHeaders(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -3174,6 +3775,13 @@ VOID PhTnpUpdateColumnHeaders(
     }
 }
 
+/**
+ * Updates column headers after a DPI change.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param OldWindowDpi The previous DPI value.
+ * \param NewWindowDpi The new DPI value.
+ */
 VOID PhTnpUpdateColumnHeadersDpiChanged(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG OldWindowDpi,
@@ -3216,6 +3824,13 @@ VOID PhTnpUpdateColumnHeadersDpiChanged(
     }
 }
 
+/**
+ * Processes a column resize operation.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Column Pointer to the column being resized.
+ * \param Delta The change in width.
+ */
 VOID PhTnpProcessResizeColumn(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ PPH_TREENEW_COLUMN Column,
@@ -3279,6 +3894,12 @@ VOID PhTnpProcessResizeColumn(
     RedrawWindow(Context->Handle, &rect, NULL, RDW_INVALIDATE | RDW_UPDATENOW); // must be RedrawWindow
 }
 
+/**
+ * Processes a column sort operation.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param NewColumn Pointer to the column being sorted.
+ */
 VOID PhTnpProcessSortColumn(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ PPH_TREENEW_COLUMN NewColumn
@@ -3340,6 +3961,13 @@ VOID PhTnpProcessSortColumn(
     Context->Callback(Context->Handle, TreeNewSortChanged, &sortOrderEvent, NULL, Context->CallbackContext);
 }
 
+/**
+ * Sets the sort icon on a column header.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param SortColumnPointer Pointer to the column being sorted, or NULL to look it up.
+ * \return TRUE if the icon was set successfully, FALSE otherwise.
+ */
 BOOLEAN PhTnpSetColumnHeaderSortIcon(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_opt_ PPH_TREENEW_COLUMN SortColumnPointer
@@ -3397,6 +4025,14 @@ BOOLEAN PhTnpSetColumnHeaderSortIcon(
     return TRUE;
 }
 
+/**
+ * Automatically sizes a column header to fit its content.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param HeaderHandle Handle to the header control.
+ * \param Column Pointer to the column to auto-size.
+ * \param Flags Flags controlling the auto-size behavior.
+ */
 VOID PhTnpAutoSizeColumnHeader(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ HWND HeaderHandle,
@@ -3446,7 +4082,7 @@ VOID PhTnpAutoSizeColumnHeader(
             }
         }
 
-        newWidth = maximumWidth + TNP_CELL_RIGHT_MARGIN; // right padding
+        newWidth = maximumWidth + Context->CellMarginRight; // right padding
 
         if (Column->Fixed)
             newWidth++;
@@ -3512,6 +4148,15 @@ VOID PhTnpAutoSizeColumnHeader(
     Header_SetItem(HeaderHandle, Column->s.ViewIndex, &item);
 }
 
+/**
+ * Gets the list of child nodes for a given node.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Node Pointer to the parent node, or NULL for root nodes.
+ * \param Children Pointer to receive the array of child nodes.
+ * \param NumberOfChildren Pointer to receive the number of children.
+ * \return TRUE if the operation succeeded, FALSE otherwise.
+ */
 _Success_(return)
 BOOLEAN PhTnpGetNodeChildren(
     _In_ PPH_TREENEW_CONTEXT Context,
@@ -3544,6 +4189,13 @@ BOOLEAN PhTnpGetNodeChildren(
     return FALSE;
 }
 
+/**
+ * Determines whether a node is a leaf node (has no children).
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Node Pointer to the node to check.
+ * \return TRUE if the node is a leaf, FALSE otherwise.
+ */
 BOOLEAN PhTnpIsNodeLeaf(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ PPH_TREENEW_NODE Node
@@ -3570,6 +4222,15 @@ BOOLEAN PhTnpIsNodeLeaf(
     return FALSE;
 }
 
+/**
+ * Retrieves the text for a specific cell.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Node Pointer to the node.
+ * \param Id The column ID.
+ * \param Text Pointer to receive the cell text as a string reference.
+ * \return TRUE if text was retrieved, FALSE otherwise.
+ */
 _Success_(return)
 BOOLEAN PhTnpGetCellText(
     _In_ PPH_TREENEW_CONTEXT Context,
@@ -3610,6 +4271,11 @@ BOOLEAN PhTnpGetCellText(
     return FALSE;
 }
 
+/**
+ * Restructures the flat list of visible nodes based on the tree hierarchy.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpRestructureNodes(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -3644,6 +4310,13 @@ VOID PhTnpRestructureNodes(
         Context->MarkNodeIndex = ULONG_MAX;
 }
 
+/**
+ * Inserts child nodes into the flat list recursively.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Node Pointer to the parent node.
+ * \param Level The nesting level of the children.
+ */
 VOID PhTnpInsertNodeChildren(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ PPH_TREENEW_NODE Node,
@@ -3692,6 +4365,13 @@ VOID PhTnpInsertNodeChildren(
     }
 }
 
+/**
+ * Sets the expanded state of a node.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Node Pointer to the node.
+ * \param Expanded TRUE to expand the node, FALSE to collapse it.
+ */
 VOID PhTnpSetExpandedNode(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ PPH_TREENEW_NODE Node,
@@ -3749,6 +4429,16 @@ VOID PhTnpSetExpandedNode(
     }
 }
 
+/**
+ * Calculates the positions and sizes of all parts of a cell.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Index The index of the row.
+ * \param Column Pointer to the column, or NULL for the fixed column.
+ * \param Flags Flags controlling which parts to calculate.
+ * \param Parts Pointer to receive the cell parts information.
+ * \return TRUE if successful, FALSE otherwise.
+ */
 BOOLEAN PhTnpGetCellParts(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Index,
@@ -3802,7 +4492,7 @@ BOOLEAN PhTnpGetCellParts(
     Parts->CellRect.top = Parts->RowRect.top;
     Parts->CellRect.bottom = Parts->RowRect.bottom;
 
-    currentX += TNP_CELL_LEFT_MARGIN;
+    currentX += Context->CellMarginLeft;
 
     if (Column == Context->FirstColumn)
     {
@@ -3830,13 +4520,13 @@ BOOLEAN PhTnpGetCellParts(
             Parts->IconRect.top = Parts->RowRect.top + iconVerticalMargin;
             Parts->IconRect.bottom = Parts->RowRect.bottom - iconVerticalMargin;
 
-            currentX += Context->SmallIconWidth + TNP_ICON_RIGHT_PADDING;
+            currentX += Context->SmallIconWidth + Context->IconRightPadding;
         }
     }
 
     Parts->Flags |= TN_PART_CONTENT;
     Parts->ContentRect.left = currentX;
-    Parts->ContentRect.right = Parts->CellRect.right - TNP_CELL_RIGHT_MARGIN;
+    Parts->ContentRect.right = Parts->CellRect.right - Context->CellMarginRight;
     Parts->ContentRect.top = Parts->RowRect.top;
     Parts->ContentRect.bottom = Parts->RowRect.bottom;
 
@@ -3933,6 +4623,12 @@ BOOLEAN PhTnpGetRowRects(
     return TRUE;
 }
 
+/**
+ * Performs hit testing to determine what element is at a given point.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param HitTest Pointer to the hit test structure (Point input, other fields output).
+ */
 VOID PhTnpHitTest(
     _In_ PPH_TREENEW_CONTEXT Context,
     _Inout_ PPH_TREENEW_HIT_TEST HitTest
@@ -4024,7 +4720,7 @@ VOID PhTnpHitTest(
                         isFirstColumn = HitTest->Column == Context->FirstColumn;
 
                         currentX = columnX;
-                        currentX += TNP_CELL_LEFT_MARGIN;
+                        currentX += Context->CellMarginLeft;
 
                         if (isFirstColumn)
                         {
@@ -4060,6 +4756,16 @@ VOID PhTnpHitTest(
     }
 }
 
+/**
+ * Selects a range of nodes.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Start The starting node index.
+ * \param End The ending node index.
+ * \param Flags Flags controlling the selection behavior.
+ * \param ChangedStart Pointer to receive the start of the changed range, or NULL.
+ * \param ChangedEnd Pointer to receive the end of the changed range, or NULL.
+ */
 VOID PhTnpSelectRange(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Start,
@@ -4160,6 +4866,13 @@ VOID PhTnpSelectRange(
         *ChangedEnd = changedEnd;
 }
 
+/**
+ * Sets the hot node (the node under the mouse cursor).
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param NewHotNode Pointer to the new hot node, or NULL to clear.
+ * \param NewPlusMinusHot TRUE if the plus/minus glyph is hot, FALSE otherwise.
+ */
 VOID PhTnpSetHotNode(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_opt_ PPH_TREENEW_NODE NewHotNode,
@@ -4212,6 +4925,15 @@ VOID PhTnpSetHotNode(
     }
 }
 
+/**
+ * Processes node selection in response to mouse or keyboard input.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Node Pointer to the node to select.
+ * \param ControlKey TRUE if the Control key is pressed, FALSE otherwise.
+ * \param ShiftKey TRUE if the Shift key is pressed, FALSE otherwise.
+ * \param RightButton TRUE if the right mouse button was used, FALSE otherwise.
+ */
 VOID PhTnpProcessSelectNode(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ PPH_TREENEW_NODE Node,
@@ -4294,6 +5016,16 @@ VOID PhTnpProcessSelectNode(
     }
 }
 
+/**
+ * Ensures that the specified node is visible within the tree new control.
+ *
+ * This function scrolls the view if necessary to bring the node at the given index
+ * into the visible area of the control. If the node is already fully visible, no action is taken.
+ *
+ * \param Context Pointer to the tree new context structure.
+ * \param Index The index of the node to make visible.
+ * \return TRUE if the node is (or was made) visible; FALSE if the index is out of range.
+ */
 BOOLEAN PhTnpEnsureVisibleNode(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Index
@@ -4337,6 +5069,17 @@ BOOLEAN PhTnpEnsureVisibleNode(
     return TRUE;
 }
 
+/**
+ * Processes mouse movement within the tree new control.
+ *
+ * This function handles mouse movement events by performing hit testing to determine
+ * the node and column under the cursor, updating the hot node state, managing divider
+ * animation, and handling tooltip display logic.
+ *
+ * \param Context Pointer to the tree new context structure.
+ * \param CursorX The X coordinate of the mouse cursor.
+ * \param CursorY The Y coordinate of the mouse cursor.
+ */
 VOID PhTnpProcessMoveMouse(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG CursorX,
@@ -4408,6 +5151,17 @@ VOID PhTnpProcessMoveMouse(
     }
 }
 
+/**
+ * Processes vertical mouse wheel events for the tree new control.
+ *
+ * This function handles vertical scrolling when the user rotates the mouse wheel.
+ * It calculates the number of lines to scroll based on system settings and updates the vertical
+ * scroll position accordingly, including handling partial scrolls and direction changes.
+ * It also manages tooltip updates after scrolling.
+ *
+ * \param Context Pointer to the tree new context structure.
+ * \param Distance The wheel delta value indicating the amount and direction of scrolling.
+ */
 VOID PhTnpProcessMouseVWheel(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG Distance
@@ -4458,9 +5212,13 @@ VOID PhTnpProcessMouseVWheel(
             POINT point;
 
             PhTnpPopTooltip(Context);
-            PhTnpGetMessagePos(Context->Handle, &point);
 
-            if (point.x >= 0 && point.y >= 0 && point.x < Context->ClientRect.right && point.y < Context->ClientRect.bottom)
+            if (
+                PhGetClientPos(Context->Handle, &point) && 
+                point.x >= 0 && point.y >= 0 && 
+                point.x < Context->ClientRect.right && 
+                point.y < Context->ClientRect.bottom
+                )
             {
                 // Send a fake mouse move message for the new node that the mouse may be hovering over.
                 message.hwnd = Context->Handle;
@@ -4473,6 +5231,16 @@ VOID PhTnpProcessMouseVWheel(
     }
 }
 
+/**
+ * Processes horizontal mouse wheel events for the tree new control.
+ *
+ * This function handles horizontal scrolling when the user rotates the mouse wheel horizontally.
+ * It calculates the number of characters to scroll based on system settings and updates the horizontal
+ * scroll position accordingly, including handling partial scrolls and direction changes.
+ *
+ * \param Context Pointer to the tree new context structure.
+ * \param Distance The wheel delta value indicating the amount and direction of scrolling.
+ */
 VOID PhTnpProcessMouseHWheel(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG Distance
@@ -4515,6 +5283,17 @@ VOID PhTnpProcessMouseHWheel(
     }
 }
 
+/**
+ * Processes focus navigation keys for the tree new control.
+ *
+ * This function handles keyboard navigation for moving the focus between nodes in the tree new control,
+ * such as Up, Down, Home, End, Page Up, and Page Down keys. It updates the focused node, selection mark,
+ * and selection range as appropriate, and ensures the focused node is visible.
+ *
+ * \param Context Pointer to the tree new context structure.
+ * \param VirtualKey The virtual key code to process (e.g., VK_UP, VK_DOWN, VK_HOME, VK_END, VK_PRIOR, VK_NEXT).
+ * \return TRUE if the key was handled; otherwise, FALSE.
+ */
 BOOLEAN PhTnpProcessFocusKey(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG VirtualKey
@@ -4694,6 +5473,16 @@ BOOLEAN PhTnpProcessFocusKey(
     return TRUE;
 }
 
+/**
+ * Processes a key event for the focused node in the tree new control.
+ *
+ * This function handles keyboard input such as space, left, right, and plus keys when a node is focused.
+ * It manages node selection, expansion/collapse, and navigation based on the key pressed and modifier keys.
+ *
+ * \param Context Pointer to the tree new context structure.
+ * \param VirtualKey The virtual key code of the key event to process.
+ * \return TRUE if the key was handled; otherwise, FALSE.
+ */
 BOOLEAN PhTnpProcessNodeKey(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG VirtualKey
@@ -4859,6 +5648,16 @@ BOOLEAN PhTnpProcessNodeKey(
     return TRUE;
 }
 
+/**
+ * Processes a character input for incremental search in the tree view control.
+ *
+ * This function handles character input (typically from WM_CHAR) to perform incremental
+ * search within the tree view. It manages the search buffer, handles timeouts, and
+ * updates the focused node and selection based on the search result.
+ *
+ * \param Context Pointer to the tree view context.
+ * \param Character The character code to process for search.
+ */
 VOID PhTnpProcessSearchKey(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG Character
@@ -5006,6 +5805,18 @@ VOID PhTnpProcessSearchKey(
     PhTnpPopTooltip(Context);
 }
 
+/**
+ * Performs the default incremental search in the tree view.
+ *
+ * This function searches for a node whose text matches the search string, starting from a given index.
+ * It supports partial and wrapped searches.
+ *
+ * \param Context Pointer to the tree view context.
+ * \param SearchEvent Pointer to the search event structure, updated with the found index.
+ * \param Partial TRUE to allow partial matches; FALSE for exact matches.
+ * \param Wrap TRUE to wrap around the list; FALSE to stop at the end.
+ * \return TRUE if the search was performed; FALSE otherwise.
+ */
 BOOLEAN PhTnpDefaultIncrementalSearch(
     _In_ PPH_TREENEW_CONTEXT Context,
     _Inout_ PPH_TREENEW_SEARCH_EVENT SearchEvent,
@@ -5075,6 +5886,14 @@ BOOLEAN PhTnpDefaultIncrementalSearch(
     return TRUE;
 }
 
+/**
+ * Updates the scroll bars for the tree view control.
+ *
+ * This function recalculates and updates the visibility, range, and position of the vertical and horizontal scroll bars
+ * based on the current content and client area size. It also manages the filler box visibility and triggers scrolling if needed.
+ *
+ * \param Context Pointer to the tree view context.
+ */
 VOID PhTnpUpdateScrollBars(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -5212,6 +6031,15 @@ VOID PhTnpUpdateScrollBars(
     }
 }
 
+/**
+ * Scrolls the tree view by the specified number of rows and columns.
+ *
+ * This function adjusts the scroll bar positions and triggers a redraw if the scroll position changes.
+ *
+ * \param Context Pointer to the tree view context.
+ * \param DeltaRows Number of rows to scroll vertically (can be MINLONG or MAXLONG for extremes).
+ * \param DeltaX Number of pixels to scroll horizontally (can be MINLONG or MAXLONG for extremes).
+ */
 VOID PhTnpScroll(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG DeltaRows,
@@ -5269,6 +6097,16 @@ VOID PhTnpScroll(
         PhTnpProcessScroll(Context, deltaRows, deltaX);
 }
 
+/**
+ * Processes the actual scrolling of the tree view window.
+ *
+ * This function performs the window scrolling operation for both vertical and horizontal directions,
+ * updates the header layout, and records the scroll tick count.
+ *
+ * \param Context Pointer to the tree view context.
+ * \param DeltaRows Number of rows to scroll vertically.
+ * \param DeltaX Number of pixels to scroll horizontally.
+ */
 VOID PhTnpProcessScroll(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG DeltaRows,
@@ -5343,6 +6181,17 @@ VOID PhTnpProcessScroll(
     Context->ScrollTickCount = NtGetTickCount64();
 }
 
+/**
+ * Determines if the tree view can scroll in the specified direction.
+ *
+ * This function checks the scroll bar positions and ranges to determine if scrolling is possible
+ * in the given direction (horizontal/vertical, positive/negative).
+ *
+ * \param Context Pointer to the tree view context.
+ * \param Horizontal TRUE to check horizontal scrolling; FALSE for vertical.
+ * \param Positive TRUE to check forward (right/down); FALSE for backward (left/up).
+ * \return TRUE if scrolling is possible; FALSE otherwise.
+ */
 BOOLEAN PhTnpCanScroll(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ BOOLEAN Horizontal,
@@ -5372,8 +6221,20 @@ BOOLEAN PhTnpCanScroll(
     }
 }
 
+/**
+ * Paints the tree view control.
+ *
+ * This function handles the drawing of all visible rows, columns, and cells in the tree view,
+ * including themed and non-themed backgrounds, selection, and custom colors. It also manages
+ * the drawing of fixed and normal columns and handles the painting of empty space.
+ *
+ * \param WindowHandle Handle to the tree view window.
+ * \param Context Pointer to the tree view context.
+ * \param hdc Handle to the device context for painting.
+ * \param PaintRect Pointer to the rectangle to be painted.
+ */
 VOID PhTnpPaint(
-    _In_ HWND hwnd,
+    _In_ HWND WindowHandle,
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ HDC hdc,
     _In_ PRECT PaintRect
@@ -5759,6 +6620,14 @@ VOID PhTnpPaint(
         PhTnpDrawSelectionRectangle(Context, hdc, &Context->DragRect);
     }
 
+    if (FlagOn(Context->Style, TN_STYLE_DRAG_REORDER_ROWS))
+    {
+        if (Context->ReorderDragActive)
+        {
+            PhTnpDrawInsertionCaret(Context, hdc);
+        }
+    }
+
     if (Context->HeaderCustomDraw)
     {
         //if (Context->FixedColumnVisible && Context->FixedHeaderHandle)
@@ -5779,6 +6648,16 @@ VOID PhTnpPaint(
     }
 }
 
+/**
+ * Prepares a tree new node for drawing.
+ *
+ * This function prepares the specified tree new node for drawing by performing
+ * necessary calculations or setups using the provided device context and context.
+ *
+ * \param Context A pointer to the tree new context.
+ * \param hdc The handle to the device context used for drawing.
+ * \param Node A pointer to the tree new node to prepare for drawing.
+ */
 VOID PhTnpPrepareRowForDraw(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ HDC hdc,
@@ -5886,6 +6765,20 @@ VOID PhTnpPrepareRowForDraw(
     }
 }
 
+/**
+ * Draws a cell in the tree new control.
+ *
+ * This function renders the content of a specific cell within the tree new control,
+ * including text, icons, and other visual elements based on the provided node and column.
+ *
+ * \param Context A pointer to the PPH_TREENEW_CONTEXT structure containing the tree new context.
+ * \param hdc A handle to the device context used for drawing operations.
+ * \param CellRect A pointer to a RECT structure defining the boundaries of the cell to draw.
+ * \param Node A pointer to the PPH_TREENEW_NODE structure representing the node associated with the cell.
+ * \param Column A pointer to the PPH_TREENEW_COLUMN structure representing the column.
+ * \param RowIndex The index of the row containing the cell.
+ * \param ColumnIndex The index of the column containing the cell.
+ */
 VOID PhTnpDrawCell(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ HDC hdc,
@@ -6118,6 +7011,12 @@ VOID PhTnpDrawCell(
     }
 }
 
+/**
+ * Draws the divider line between the fixed and normal columns.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param hdc Device context handle.
+ */
 VOID PhTnpDrawDivider(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ HDC hdc
@@ -6184,6 +7083,13 @@ VOID PhTnpDrawDivider(
     Polyline(hdc, points, 2);
 }
 
+/**
+ * Draws the plus/minus glyph for expanding/collapsing tree nodes.
+ *
+ * \param hdc Device context handle.
+ * \param Rect Pointer to the bounding rectangle for the glyph.
+ * \param Plus TRUE to draw a plus sign, FALSE to draw a minus sign.
+ */
 VOID PhTnpDrawPlusMinusGlyph(
     _In_ HDC hdc,
     _In_ PRECT Rect,
@@ -6230,6 +7136,13 @@ VOID PhTnpDrawPlusMinusGlyph(
     RestoreDC(hdc, savedDc);
 }
 
+/**
+ * Draws the selection rectangle around selected items.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param hdc Device context handle.
+ * \param Rect Pointer to the rectangle to draw.
+ */
 VOID PhTnpDrawSelectionRectangle(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ HDC hdc,
@@ -6306,6 +7219,12 @@ VOID PhTnpDrawSelectionRectangle(
     }
 }
 
+/**
+ * Draws the themed border around the control.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param hdc Device context handle.
+ */
 VOID PhTnpDrawThemedBorder(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ HDC hdc
@@ -6360,21 +7279,26 @@ VOID PhTnpDrawThemedBorder(
     }
 }
 
+/**
+ * Initializes the tooltip control for the treenew control.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpInitializeTooltips(
     _In_ PPH_TREENEW_CONTEXT Context
     )
 {
     TOOLINFO toolInfo;
 
-    Context->TooltipsHandle = CreateWindowEx(
-        WS_EX_TRANSPARENT, // solves double-click problem
+    Context->TooltipsHandle = PhCreateWindowEx(
         TOOLTIPS_CLASS,
         NULL,
         WS_POPUP | TTS_NOANIMATE | TTS_NOFADE | TTS_NOPREFIX | TTS_ALWAYSTIP,
-        0,
-        0,
-        0,
-        0,
+        WS_EX_TOPMOST | WS_EX_TRANSPARENT, // solves double-click problem (wj32)
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
         NULL,
         NULL,
         NULL,
@@ -6410,6 +7334,13 @@ VOID PhTnpInitializeTooltips(
     toolInfo.lParam = TNP_TOOLTIPS_HEADER;
     SendMessage(Context->TooltipsHandle, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
 
+    SetWindowPos(
+        Context->TooltipsHandle,
+        HWND_TOPMOST,
+        0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+        );
+
     if (Context->HeaderCustomDraw)
     {
         Context->HeaderHotColumn = ULONG_MAX;
@@ -6430,11 +7361,19 @@ VOID PhTnpInitializeTooltips(
     Context->TooltipFont = Context->Font;
 }
 
+/**
+ * Retrieves the tooltip text for a cell at a given point.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Point Pointer to the point to test.
+ * \param Text Pointer to receive the tooltip text.
+ * \return TRUE if tooltip text was retrieved, FALSE otherwise.
+ */
 _Success_(return)
 BOOLEAN PhTnpGetTooltipText(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ PPOINT Point,
-    _Out_ PWSTR *Text
+    _Out_ PPH_STRING *Text
     )
 {
     PH_TREENEW_HIT_TEST hitTest;
@@ -6539,13 +7478,19 @@ BOOLEAN PhTnpGetTooltipText(
 
     if (Context->TooltipText)
     {
-        *Text = Context->TooltipText->Buffer;
+        *Text = Context->TooltipText;
         return TRUE;
     }
 
     return FALSE;
 }
 
+/**
+ * Prepares to show the tooltip.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \return TRUE if the tooltip should be shown, FALSE otherwise.
+ */
 BOOLEAN PhTnpPrepareTooltipShow(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -6598,6 +7543,11 @@ VOID PhTnpPrepareTooltipPop(
     Context->TooltipColumnId = ULONG_MAX;
 }
 
+/**
+ * Hides the tooltip.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpPopTooltip(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -6609,6 +7559,15 @@ VOID PhTnpPopTooltip(
     }
 }
 
+/**
+ * Performs hit testing on the header control.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Fixed TRUE to test the fixed header, FALSE for the normal header.
+ * \param Point Pointer to the point to test.
+ * \param ItemRect Pointer to receive the item rectangle, or NULL.
+ * \return Pointer to the column under the point, or NULL.
+ */
 PPH_TREENEW_COLUMN PhTnpHitTestHeader(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ BOOLEAN Fixed,
@@ -6668,12 +7627,21 @@ PPH_TREENEW_COLUMN PhTnpHitTestHeader(
     return column;
 }
 
+/**
+ * Retrieves the tooltip text for a header column.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Fixed TRUE if this is the fixed header, FALSE for normal header.
+ * \param Point Pointer to the point under the cursor.
+ * \param Text Pointer to receive the tooltip text.
+ * \return TRUE if tooltip text was retrieved, FALSE otherwise.
+ */
 _Success_(return)
 BOOLEAN PhTnpGetHeaderTooltipText(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ BOOLEAN Fixed,
     _In_ PPOINT Point,
-    _Out_ PWSTR *Text
+    _Out_ PPH_STRING *Text
     )
 {
     LOGICAL result;
@@ -6715,7 +7683,7 @@ BOOLEAN PhTnpGetHeaderTooltipText(
         PhMoveReference(&Context->TooltipText, PhCreateStringEx(text, textCount * sizeof(WCHAR)));
     }
 
-    *Text = Context->TooltipText->Buffer;
+    *Text = Context->TooltipText;
 
     // Always use the default parameters for column header tooltips.
     Context->NewTooltipFont = Context->Font;
@@ -6725,6 +7693,14 @@ BOOLEAN PhTnpGetHeaderTooltipText(
     return TRUE;
 }
 
+/**
+ * Retrieves the text for a column header.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Column Pointer to the column.
+ * \param Text Pointer to receive the header text as a string reference.
+ * \return TRUE if text was retrieved, FALSE otherwise.
+ */
 _Success_(return)
 BOOLEAN PhTnpGetColumnHeaderText(
     _In_ PPH_TREENEW_CONTEXT Context,
@@ -6979,10 +7955,17 @@ BOOLEAN TnHeaderCustomPaint(
     return TRUE;
 }
 
+/**
+ * Creates a buffered paint context for the header.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param Hdc The device context handle.
+ * \param BufferRect Pointer to the buffer rectangle.
+ */
 VOID PhTnpHeaderCreateBufferedContext(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ HDC Hdc,
-    _In_ RECT BufferRect
+    _In_ PRECT BufferRect
     )
 {
     Context->HeaderBufferedDc = CreateCompatibleDC(Hdc);
@@ -6990,7 +7973,7 @@ VOID PhTnpHeaderCreateBufferedContext(
     if (!Context->HeaderBufferedDc)
         return;
 
-    Context->HeaderBufferedContextRect = BufferRect;
+    Context->HeaderBufferedContextRect = *BufferRect;
     Context->HeaderBufferedBitmap = CreateCompatibleBitmap(
         Hdc,
         Context->HeaderBufferedContextRect.right,
@@ -7000,6 +7983,11 @@ VOID PhTnpHeaderCreateBufferedContext(
     Context->HeaderBufferedOldBitmap = SelectBitmap(Context->HeaderBufferedDc, Context->HeaderBufferedBitmap);
 }
 
+/**
+ * Destroys the buffered paint context for the header.
+ *
+ * \param Context Pointer to the treenew context structure.
+ */
 VOID PhTnpHeaderDestroyBufferedContext(
     _In_ PPH_TREENEW_CONTEXT Context
     )
@@ -7023,9 +8011,18 @@ VOID PhTnpHeaderDestroyBufferedContext(
     }
 }
 
+/**
+ * Window procedure hook for the header control.
+ *
+ * \param WindowHandle Handle to the header window.
+ * \param WindowMessage The message identifier.
+ * \param wParam Additional message-specific information.
+ * \param lParam Additional message-specific information.
+ * \return The result of the message processing.
+ */
 LRESULT CALLBACK PhTnpHeaderHookWndProc(
-    _In_ HWND hwnd,
-    _In_ UINT uMsg,
+    _In_ HWND WindowHandle,
+    _In_ UINT WindowMessage,
     _In_ WPARAM wParam,
     _In_ LPARAM lParam
     )
@@ -7033,25 +8030,25 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
     PPH_TREENEW_CONTEXT context;
     WNDPROC oldWndProc;
 
-    if (context = PhGetWindowContext(hwnd, MAXCHAR))
+    if (context = PhGetWindowContext(WindowHandle, MAXCHAR))
     {
-        if (hwnd == context->FixedHeaderHandle)
+        if (WindowHandle == context->FixedHeaderHandle)
             oldWndProc = context->FixedHeaderWindowProc;
         else
             oldWndProc = context->HeaderWindowProc;
     }
     else
     {
-        return DefWindowProc(hwnd, uMsg, wParam, lParam);
+        return DefWindowProc(WindowHandle, WindowMessage, wParam, lParam);
     }
 
-    switch (uMsg)
+    switch (WindowMessage)
     {
     case WM_DESTROY:
         {
-            PhSetWindowProcedure(hwnd, oldWndProc);
+            PhSetWindowProcedure(WindowHandle, oldWndProc);
 
-            PhRemoveWindowContext(hwnd, MAXCHAR);
+            PhRemoveWindowContext(WindowHandle, MAXCHAR);
 
             PhTnpHeaderDestroyBufferedContext(context);
         }
@@ -7064,7 +8061,7 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
 
             point.x = GET_X_LPARAM(lParam);
             point.y = GET_Y_LPARAM(lParam);
-            column = PhTnpHitTestHeader(context, hwnd == context->FixedHeaderHandle, &point, NULL);
+            column = PhTnpHitTestHeader(context, WindowHandle == context->FixedHeaderHandle, &point, NULL);
 
             if (column)
                 id = column->Id;
@@ -7089,9 +8086,16 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
                     {
                         NMTTDISPINFO *info = (NMTTDISPINFO *)header;
                         POINT point;
+                        PPH_STRING string;
 
-                        PhTnpGetMessagePos(hwnd, &point);
-                        PhTnpGetHeaderTooltipText(context, info->lParam == TNP_TOOLTIPS_FIXED_HEADER, &point, &info->lpszText);
+                        if (PhGetClientPos(WindowHandle, &point))
+                        {
+                            if (PhTnpGetHeaderTooltipText(context, info->lParam == TNP_TOOLTIPS_FIXED_HEADER, &point, &string))
+                            {
+                                info->lpszText = string->Buffer;
+                                break;
+                            }
+                        }
                     }
                 }
                 break;
@@ -7116,7 +8120,7 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
         break;
     }
 
-    switch (uMsg)
+    switch (WindowMessage)
     {
     //case WM_MOUSEMOVE:
     //case WM_LBUTTONDOWN:
@@ -7130,8 +8134,8 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
             {
                 MSG message;
 
-                message.hwnd = hwnd;
-                message.message = uMsg;
+                message.hwnd = WindowHandle;
+                message.message = WindowMessage;
                 message.wParam = wParam;
                 message.lParam = lParam;
                 SendMessage(context->TooltipsHandle, TTM_RELAYEVENT, 0, (LPARAM)&message);
@@ -7168,8 +8172,8 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
             {
                 MSG message;
 
-                message.hwnd = hwnd;
-                message.message = uMsg;
+                message.hwnd = WindowHandle;
+                message.message = WindowMessage;
                 message.wParam = wParam;
                 message.lParam = lParam;
                 SendMessage(context->TooltipsHandle, TTM_RELAYEVENT, 0, (LPARAM)&message);
@@ -7188,7 +8192,7 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
 
                 point.x = GET_X_LPARAM(lParam);
                 point.y = GET_Y_LPARAM(lParam);
-                column = PhTnpHitTestHeader(context, hwnd == context->FixedHeaderHandle, &point, NULL);
+                column = PhTnpHitTestHeader(context, WindowHandle == context->FixedHeaderHandle, &point, NULL);
 
                 hitcolumn = column ? column->Id : ULONG_MAX;
 
@@ -7207,7 +8211,7 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
                 {
                     sizeof(TRACKMOUSEEVENT),
                     TME_LEAVE,
-                    hwnd,
+                    WindowHandle,
                     0
                 };
 
@@ -7219,7 +8223,7 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
 
             if (redraw)
             {
-                InvalidateRect(hwnd, NULL, FALSE);
+                InvalidateRect(WindowHandle, NULL, FALSE);
             }
         }
         break;
@@ -7230,8 +8234,8 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
             if (!context->HeaderCustomDraw)
                 break;
 
-            result = CallWindowProc(oldWndProc, hwnd, uMsg, wParam, lParam);
-            InvalidateRect(hwnd, NULL, FALSE);
+            result = CallWindowProc(oldWndProc, WindowHandle, WindowMessage, wParam, lParam);
+            InvalidateRect(WindowHandle, NULL, FALSE);
             return result;
         }
         break;
@@ -7246,8 +8250,8 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
             {
                 MSG message;
 
-                message.hwnd = hwnd;
-                message.message = uMsg;
+                message.hwnd = WindowHandle;
+                message.message = WindowMessage;
                 message.wParam = wParam;
                 message.lParam = lParam;
                 SendMessage(context->TooltipsHandle, TTM_RELAYEVENT, 0, (LPARAM)&message);
@@ -7258,7 +8262,7 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
 
             point.x = GET_X_LPARAM(lParam);
             point.y = GET_Y_LPARAM(lParam);
-            column = PhTnpHitTestHeader(context, hwnd == context->FixedHeaderHandle, &point, NULL);
+            column = PhTnpHitTestHeader(context, WindowHandle == context->FixedHeaderHandle, &point, NULL);
 
             hitcolumn = column ? column->Id : ULONG_MAX;
 
@@ -7268,9 +8272,9 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
                 //redraw = TRUE;
             }
 
-            InvalidateRect(hwnd, NULL, FALSE);
+            InvalidateRect(WindowHandle, NULL, FALSE);
 
-            result = CallWindowProc(oldWndProc, hwnd, uMsg, wParam, lParam);
+            result = CallWindowProc(oldWndProc, WindowHandle, WindowMessage, wParam, lParam);
             context->HeaderDragging = TRUE;
             return result;
         }
@@ -7283,8 +8287,8 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
             {
                 MSG message;
 
-                message.hwnd = hwnd;
-                message.message = uMsg;
+                message.hwnd = WindowHandle;
+                message.message = WindowMessage;
                 message.wParam = wParam;
                 message.lParam = lParam;
                 SendMessage(context->TooltipsHandle, TTM_RELAYEVENT, 0, (LPARAM)&message);
@@ -7293,7 +8297,7 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
             if (!context->HeaderCustomDraw)
                 break;
 
-            result = CallWindowProc(oldWndProc, hwnd, uMsg, wParam, lParam);
+            result = CallWindowProc(oldWndProc, WindowHandle, WindowMessage, wParam, lParam);
             context->HeaderDragging = FALSE;
             return result;
         }
@@ -7306,8 +8310,8 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
             {
                 MSG message;
 
-                message.hwnd = hwnd;
-                message.message = uMsg;
+                message.hwnd = WindowHandle;
+                message.message = WindowMessage;
                 message.wParam = wParam;
                 message.lParam = lParam;
                 SendMessage(context->TooltipsHandle, TTM_RELAYEVENT, 0, (LPARAM)&message);
@@ -7316,16 +8320,16 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
             if (!context->HeaderCustomDraw)
                 break;
 
-            result = CallWindowProc(oldWndProc, hwnd, uMsg, wParam, lParam);
+            result = CallWindowProc(oldWndProc, WindowHandle, WindowMessage, wParam, lParam);
             context->HeaderMouseActive = FALSE;
             context->HeaderHotColumn = ULONG_MAX;
 
-            //if (GetCapture() != hwnd)
+            //if (GetCapture() != WindowHandle)
             //{
-            //    InvalidateRect(hwnd, NULL, FALSE);
+            //    InvalidateRect(WindowHandle, NULL, FALSE);
             //}
 
-            InvalidateRect(hwnd, NULL, FALSE);
+            InvalidateRect(WindowHandle, NULL, FALSE);
 
             return result;
         }
@@ -7338,14 +8342,24 @@ LRESULT CALLBACK PhTnpHeaderHookWndProc(
                 context->HeaderThemeHandle = NULL;
             }
 
-            context->HeaderThemeHandle = PhOpenThemeData(hwnd, VSCLASS_HEADER, context->WindowDpi);
+            context->HeaderThemeHandle = PhOpenThemeData(WindowHandle, VSCLASS_HEADER, context->WindowDpi);
         }
         break;
     }
 
-    return CallWindowProc(oldWndProc, hwnd, uMsg, wParam, lParam);
+    return CallWindowProc(oldWndProc, WindowHandle, WindowMessage, wParam, lParam);
 }
 
+/**
+ * Detects the start of a drag operation.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param CursorX The X coordinate of the cursor.
+ * \param CursorY The Y coordinate of the cursor.
+ * \param DispatchMessages TRUE to dispatch messages during drag detection, FALSE otherwise.
+ * \param CancelledByMessage Pointer to receive the message that cancelled the drag, or NULL.
+ * \return TRUE if a drag was detected, FALSE otherwise.
+ */
 BOOLEAN PhTnpDetectDrag(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG CursorX,
@@ -7416,6 +8430,13 @@ BOOLEAN PhTnpDetectDrag(
     return FALSE;
 }
 
+/**
+ * Performs drag selection of nodes.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param CursorX The starting X coordinate of the cursor.
+ * \param CursorY The starting Y coordinate of the cursor.
+ */
 VOID PhTnpDragSelect(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ LONG CursorX,
@@ -7674,6 +8695,15 @@ EndOfLoop:
     }
 }
 
+/**
+ * Processes drag selection based on mouse movement.
+ *
+ * \param Context Pointer to the treenew context structure.
+ * \param VirtualKeys The state of virtual keys.
+ * \param OldRect Pointer to the previous drag rectangle.
+ * \param NewRect Pointer to the new drag rectangle.
+ * \param TotalRect Pointer to the total drag rectangle.
+ */
 VOID PhTnpProcessDragSelect(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ ULONG VirtualKeys,
@@ -7763,6 +8793,12 @@ VOID PhTnpProcessDragSelect(
     }
 }
 
+/**
+ * Creates a buffered device context and bitmap for double-buffered drawing.
+ *
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param Hdc Handle to the device context to be buffered.
+ */
 VOID PhTnpCreateBufferedContext(
     _In_ PPH_TREENEW_CONTEXT Context,
     _In_ HDC Hdc
@@ -7790,32 +8826,310 @@ VOID PhTnpCreateBufferedContext(
     Context->BufferedOldBitmap = SelectBitmap(Context->BufferedContext, Context->BufferedBitmap);
 }
 
+/**
+ * Destroys the buffered device context and bitmap, cleaning up resources.
+ *
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
 VOID PhTnpDestroyBufferedContext(
     _In_ PPH_TREENEW_CONTEXT Context
-    )
+)
 {
     // The original bitmap must be selected back into the context, otherwise the bitmap can't be
     // deleted.
-    SelectBitmap(Context->BufferedContext, Context->BufferedOldBitmap);
-    DeleteBitmap(Context->BufferedBitmap);
-    DeleteDC(Context->BufferedContext);
 
-    Context->BufferedContext = NULL;
-    Context->BufferedBitmap = NULL;
+    if (Context->BufferedOldBitmap)
+    {
+        SelectBitmap(Context->BufferedContext, Context->BufferedOldBitmap);
+        Context->BufferedOldBitmap = NULL;
+    }
+
+    if (Context->BufferedBitmap)
+    {
+        DeleteBitmap(Context->BufferedBitmap);
+        Context->BufferedBitmap = NULL;
+    }
+
+    if (Context->BufferedContext)
+    {
+        DeleteDC(Context->BufferedContext);
+        Context->BufferedContext = NULL;
+    }
 }
 
-VOID PhTnpGetMessagePos(
-    _In_ HWND hwnd,
-    _Out_ PPOINT ClientPoint
+/**
+ * Sends a message to a TreeNew window, handling custom messages if needed.
+ *
+ * \param WindowHandle Handle to the window.
+ * \param WindowMessage Message to send.
+ * \param wParam WPARAM for the message.
+ * \param lParam LPARAM for the message.
+ * \return The result of the message processing.
+ */
+LRESULT PhTnSendMessage(
+    _In_ HWND WindowHandle,
+    _In_ ULONG WindowMessage,
+    _Pre_maybenull_ _Post_valid_ WPARAM wParam,
+    _Pre_maybenull_ _Post_valid_ LPARAM lParam
     )
 {
-    ULONG position;
-    POINT point;
+    if (WindowMessage >= TNM_FIRST && WindowMessage <= TNM_LAST)
+    {
+#if defined(DEBUG)
+        PPH_TREENEW_CONTEXT context;
+#else
+        PVOID context;
+#endif
+        if (context = PhGetWindowContextEx(WindowHandle))
+        {
+#if defined(DEBUG)
+            assert(context->UniqueThread == NtCurrentThreadId());
+#endif
+            return PhTnpOnUserMessage(WindowHandle, context, WindowMessage, wParam, lParam);
+        }
+    }
+#if defined(DEBUG)
+    assert(FALSE);
+#endif
+    return SendMessage(WindowHandle, WindowMessage, wParam, lParam);
+}
 
-    position = GetMessagePos();
-    point.x = GET_X_LPARAM(position);
-    point.y = GET_Y_LPARAM(position);
-    ScreenToClient(hwnd, &point);
+//
+// Drag-reorder
+//
 
-    *ClientPoint = point;
+/**
+ * Draws the insertion caret for drag-reorder operations.
+ *
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param Hdc Handle to the device context to draw on.
+ */
+VOID PhTnpDrawInsertionCaret(
+    _In_ PPH_TREENEW_CONTEXT Context,
+    _In_ HDC Hdc
+    )
+{
+    RECT r;
+    HPEN old;
+    COLORREF prev;
+
+    r = Context->ReorderInsertRect;
+
+    if (r.right <= r.left || r.bottom <= r.top)
+        return;
+
+    old = SelectPen(Hdc, PhGetStockPen(DC_PEN));
+    prev = SetDCPenColor(Hdc, RGB(0, 120, 215)); // Windows accent blue-ish
+
+    POINT pts[2];
+    pts[0].x = r.left;
+    pts[0].y = (r.top + r.bottom) / 2;
+    pts[1].x = r.right;
+    pts[1].y = pts[0].y;
+    Polyline(Hdc, pts, 2);
+
+    SetDCPenColor(Hdc, prev);
+    if (old) SelectPen(Hdc, old);
+}
+
+/**
+ * Invalidates the region occupied by the drag-reorder insertion caret.
+ *
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
+VOID PhTnpReorderInvalidateCaret(
+    _In_ PPH_TREENEW_CONTEXT Context
+    )
+{
+    if (Context->ReorderInsertRect.right > Context->ReorderInsertRect.left &&
+        Context->ReorderInsertRect.bottom > Context->ReorderInsertRect.top)
+    {
+        InvalidateRect(Context->Handle, &Context->ReorderInsertRect, FALSE);
+    }
+}
+
+/**
+ * Updates the rectangle for the drag-reorder insertion caret based on the current target index.
+ *
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
+VOID PhTnpReorderUpdateCaretRect(
+    _In_ PPH_TREENEW_CONTEXT Context
+    )
+{
+    // Compute y position for insertion caret
+    LONG viewLeft = 0;
+    LONG viewRight = Context->ClientRect.right - (Context->VScrollVisible ? Context->VScrollWidth : 0);
+    LONG rowYTop = Context->HeaderHeight + ((LONG)Context->ReorderTargetIndex - Context->VScrollPosition) * Context->RowHeight;
+
+    if (Context->ReorderDropAfter)
+    {
+        rowYTop += Context->RowHeight;
+    }
+
+    RECT rect;
+    rect.left   = viewLeft;
+    rect.right  = viewRight;
+    rect.top    = rowYTop - 1;
+    rect.bottom = rowYTop + 1;
+
+    memcpy(&Context->ReorderInsertRect, &rect, sizeof(RECT));
+}
+
+/**
+ * Begins a drag-reorder operation.
+ *
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param SourceIndex Index of the node being dragged.
+ */
+VOID PhTnpReorderBegin(
+    _In_ PPH_TREENEW_CONTEXT Context,
+    _In_ ULONG SourceIndex
+    )
+{
+    Context->ReorderDragActive  = TRUE;
+    Context->ReorderSourceIndex = SourceIndex;
+    Context->ReorderTargetIndex = SourceIndex;
+    Context->ReorderDropAfter   = FALSE;
+    Context->ReorderJustStarted = TRUE;
+
+    SetCapture(Context->Handle);
+
+    if (!Context->ReorderCursor)
+        Context->ReorderCursor = PhLoadCursor(NULL, IDC_SIZENS);
+}
+
+/**
+ * Cancels an active drag-reorder operation and notifies the callback.
+ *
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
+VOID PhTnpReorderCancel(
+    _In_ PPH_TREENEW_CONTEXT Context
+    )
+{
+    if (!Context->ReorderDragActive)
+        return;
+
+    {
+        PH_TREENEW_REORDER_EVENT reorderEvent;
+
+        memset(&reorderEvent, 0, sizeof(PH_TREENEW_REORDER_EVENT));
+        reorderEvent.Source = (Context->ReorderSourceIndex < Context->FlatList->Count) ? (PPH_TREENEW_NODE)Context->FlatList->Items[Context->ReorderSourceIndex] : NULL;
+        reorderEvent.Target = (Context->ReorderTargetIndex < Context->FlatList->Count) ? (PPH_TREENEW_NODE)Context->FlatList->Items[Context->ReorderTargetIndex] : NULL;
+        reorderEvent.DropAfter = Context->ReorderDropAfter;
+
+        Context->Callback(Context->Handle, TreeNewReorderCancel, &reorderEvent, NULL, Context->CallbackContext);
+    }
+
+    PhTnpReorderInvalidateCaret(Context);
+
+    memset(&Context->ReorderInsertRect, 0, sizeof(Context->ReorderInsertRect));
+
+    Context->ReorderDragActive = FALSE;
+
+    ReleaseCapture();
+
+    InvalidateRect(Context->Handle, NULL, FALSE);
+}
+
+/**
+ * Commits a drag-reorder operation, notifies the callback, and updates the UI.
+ *
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ */
+VOID PhTnpReorderCommit(
+    _In_ PPH_TREENEW_CONTEXT Context
+    )
+{
+    PH_TREENEW_REORDER_EVENT reorderEvent;
+
+    if (!Context->ReorderDragActive)
+        return;
+
+    // No-op if same place
+    //if (Context->ReorderSourceIndex == Context->ReorderTargetIndex &&
+    //    !Context->ReorderDropAfter)
+    //{
+    //    PhTnpReorderCancel(Context);
+    //    return;
+    //}
+
+    memset(&reorderEvent, 0, sizeof(PH_TREENEW_REORDER_EVENT));
+    reorderEvent.Source = (Context->ReorderSourceIndex < Context->FlatList->Count) ? (PPH_TREENEW_NODE)Context->FlatList->Items[Context->ReorderSourceIndex] : NULL;
+    reorderEvent.Target = (Context->ReorderTargetIndex < Context->FlatList->Count) ? (PPH_TREENEW_NODE)Context->FlatList->Items[Context->ReorderTargetIndex] : NULL;
+    reorderEvent.DropAfter = Context->ReorderDropAfter;
+    reorderEvent.Allow = TRUE;
+
+    Context->Callback(Context->Handle, TreeNewReorderCommit, &reorderEvent, NULL, Context->CallbackContext);
+
+    PhTnpReorderInvalidateCaret(Context);
+
+    Context->ReorderInsertRect = (RECT){ 0 };
+    Context->ReorderDragActive = FALSE;
+
+    ReleaseCapture();
+
+    // Parent should reorder underlying data and then trigger TNM_NODESSTRUCTURED
+    InvalidateRect(Context->Handle, NULL, FALSE);
+}
+
+/**
+ * Updates the drag-reorder target index and caret based on the current cursor position.
+ *
+ * \param Context Pointer to the PPH_TREENEW_CONTEXT structure.
+ * \param CursorX X coordinate of the cursor.
+ * \param CursorY Y coordinate of the cursor.
+ */
+VOID PhTnpReorderUpdate(
+    _In_ PPH_TREENEW_CONTEXT Context,
+    _In_ LONG CursorX,
+    _In_ LONG CursorY
+    )
+{
+    LONG y;
+    ULONG idx;
+
+    if (Context->FlatList->Count == 0)
+        return;
+
+    // Update target index and caret based on cursor position
+
+    y = CursorY;
+    if (y < Context->HeaderHeight)
+        y = Context->HeaderHeight;
+
+    idx = (y - Context->HeaderHeight) / Context->RowHeight + Context->VScrollPosition;
+    if (idx >= Context->FlatList->Count)
+        idx = Context->FlatList->Count - 1;
+
+    BOOLEAN dropAfter = FALSE;
+    LONG localYTop = Context->HeaderHeight + ((LONG)idx - Context->VScrollPosition) * Context->RowHeight;
+    LONG mid = localYTop + (Context->RowHeight / 2);
+    if (CursorY >= mid)
+    {
+        dropAfter = TRUE;
+    }
+
+    if (idx != Context->ReorderTargetIndex || dropAfter != Context->ReorderDropAfter)
+    {
+        PH_TREENEW_REORDER_EVENT reorderEvent;
+
+        memset(&reorderEvent, 0, sizeof(PH_TREENEW_REORDER_EVENT));
+        reorderEvent.Source = (Context->ReorderSourceIndex < Context->FlatList->Count) ? (PPH_TREENEW_NODE)Context->FlatList->Items[Context->ReorderSourceIndex] : NULL;
+        reorderEvent.Target = (idx < Context->FlatList->Count) ? (PPH_TREENEW_NODE)Context->FlatList->Items[idx] : NULL;
+        reorderEvent.DropAfter = dropAfter;
+        reorderEvent.Allow = TRUE;
+
+        Context->Callback(Context->Handle, TreeNewReorderOver, &reorderEvent, NULL, Context->CallbackContext);
+
+        if (reorderEvent.Allow)
+        {
+            PhTnpReorderInvalidateCaret(Context);
+            Context->ReorderTargetIndex = idx;
+            Context->ReorderDropAfter   = dropAfter;
+            PhTnpReorderUpdateCaretRect(Context);
+            InvalidateRect(Context->Handle, &Context->ReorderInsertRect, FALSE);
+        }
+    }
 }

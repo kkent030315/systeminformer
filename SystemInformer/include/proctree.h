@@ -236,9 +236,11 @@ typedef struct _PH_PROCESS_NODE
     // Start key
     ULONGLONG ProcessStartKey;
 
+    PPH_STRING FileNameWin32;
+    ULONG ServerSiloId;
+
     PPH_STRING TooltipText;
     ULONG64 TooltipTextValidToTickCount;
-    PPH_STRING FileNameWin32;
 
     // Text buffers
     WCHAR CpuUsageText[PH_INT32_STR_LEN_1 + 3];
@@ -286,6 +288,7 @@ typedef struct _PH_PROCESS_NODE
     PPH_STRING FileSizeText;
     PPH_STRING SubprocessCountText;
     PPH_STRING JobObjectIdText;
+    PPH_STRING ProtectionText;
     PPH_STRING DesktopInfoText;
     PPH_STRING CpuCoreUsageText;
     PPH_STRING ImageCoherencyText;
@@ -305,6 +308,7 @@ typedef struct _PH_PROCESS_NODE
     PPH_STRING ProcessStartKeyText;
     PPH_STRING MitigationPoliciesText;
     PPH_STRING ServicesText;
+    PPH_STRING ServerSiloText;
 
     // Graph buffers
     PH_GRAPH_BUFFERS CpuGraphBuffers;
@@ -401,6 +405,13 @@ PhGetSelectedProcessItems(
     _Out_ PULONG NumberOfProcesses
     );
 
+PHAPPAPI
+PPH_PROCESS_NODE
+NTAPI
+PhGetSelectedProcessNode(
+    VOID
+    );
+
 _Success_(return)
 PHAPPAPI
 BOOLEAN
@@ -440,14 +451,14 @@ PhInvalidateAllProcessNodes(
     );
 
 PHAPPAPI
-VOID
+BOOLEAN
 NTAPI
 PhSelectAndEnsureVisibleProcessNode(
     _In_ PPH_PROCESS_NODE ProcessNode
     );
 // end_phapppub
 
-VOID PhSelectAndEnsureVisibleProcessNodes(
+BOOLEAN PhSelectAndEnsureVisibleProcessNodes(
     _In_ PPH_PROCESS_NODE *ProcessNodes,
     _In_ ULONG NumberOfProcessNodes
     );

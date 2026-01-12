@@ -28,6 +28,7 @@ VOID PhpDestroyMemoryNode(
     _In_ PPH_MEMORY_NODE MemoryNode
     );
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpMemoryTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,
@@ -49,7 +50,7 @@ VOID PhInitializeMemoryList(
     _Out_ PPH_MEMORY_LIST_CONTEXT Context
     )
 {
-    BOOLEAN enableMonospaceFont = !!PhGetIntegerSetting(L"EnableMonospaceFont");
+    BOOLEAN enableMonospaceFont = !!PhGetIntegerSetting(SETTING_ENABLE_MONOSPACE_FONT);
 
     memset(Context, 0, sizeof(PH_MEMORY_LIST_CONTEXT));
     Context->AllocationBaseNodeList = PhCreateList(100);
@@ -126,9 +127,9 @@ VOID PhLoadSettingsMemoryList(
     PPH_STRING settings;
     PPH_STRING sortSettings;
 
-    flags = PhGetIntegerSetting(L"MemoryListFlags");
-    settings = PhGetStringSetting(L"MemoryTreeListColumns");
-    sortSettings = PhGetStringSetting(L"MemoryTreeListSort");
+    flags = PhGetIntegerSetting(SETTING_MEMORY_LIST_FLAGS);
+    settings = PhGetStringSetting(SETTING_MEMORY_TREE_LIST_COLUMNS);
+    sortSettings = PhGetStringSetting(SETTING_MEMORY_TREE_LIST_SORT);
 
     Context->Flags = flags;
     PhCmLoadSettingsEx(Context->TreeNewHandle, &Context->Cm, 0, &settings->sr, &sortSettings->sr);
@@ -146,9 +147,9 @@ VOID PhSaveSettingsMemoryList(
 
     settings = PhCmSaveSettingsEx(Context->TreeNewHandle, &Context->Cm, 0, &sortSettings);
 
-    PhSetIntegerSetting(L"MemoryListFlags", Context->Flags);
-    PhSetStringSetting2(L"MemoryTreeListColumns", &settings->sr);
-    PhSetStringSetting2(L"MemoryTreeListSort", &sortSettings->sr);
+    PhSetIntegerSetting(SETTING_MEMORY_LIST_FLAGS, Context->Flags);
+    PhSetStringSetting2(SETTING_MEMORY_TREE_LIST_COLUMNS, &settings->sr);
+    PhSetStringSetting2(SETTING_MEMORY_TREE_LIST_SORT, &sortSettings->sr);
 
     PhDereferenceObject(settings);
     PhDereferenceObject(sortSettings);
@@ -665,6 +666,7 @@ PPH_STRING PhpFormatSizeIfNonZero(
     return PhModifySort(sortResult, ((PPH_MEMORY_LIST_CONTEXT)_context)->TreeNewSortOrder); \
 }
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpMemoryTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,

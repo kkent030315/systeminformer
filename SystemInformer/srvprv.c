@@ -135,9 +135,9 @@ static HANDLE PhNonPollEventHandle = NULL;
 static RTL_STATIC_LIST_HEAD(PhpNonPollServiceListHead);
 static RTL_STATIC_LIST_HEAD(PhpNonPollServicePendingListHead);
 static SLIST_HEADER PhpServiceQueryDataListHead;
-static __typeof__(&NotifyServiceStatusChangeW) NotifyServiceStatusChange_I = NULL;
-static __typeof__(&SubscribeServiceChangeNotifications) SubscribeServiceChangeNotifications_I = NULL;
-static __typeof__(&UnsubscribeServiceChangeNotifications) UnsubscribeServiceChangeNotifications_I = NULL;
+static typeof(&NotifyServiceStatusChangeW) NotifyServiceStatusChange_I = NULL;
+static typeof(&SubscribeServiceChangeNotifications) SubscribeServiceChangeNotifications_I = NULL;
+static typeof(&UnsubscribeServiceChangeNotifications) UnsubscribeServiceChangeNotifications_I = NULL;
 
 BOOLEAN PhServiceProviderInitialization(
     VOID
@@ -724,12 +724,12 @@ VOID PhUpdateServiceItemConfig(
         PhFree(config);
     }
 
-    if (PhGetServiceDelayedAutoStart(serviceHandle, &delayedAutoStartInfo))
+    if (NT_SUCCESS(PhGetServiceDelayedAutoStart(serviceHandle, &delayedAutoStartInfo)))
         ServiceItem->DelayedStart = delayedAutoStartInfo;
     else
         ServiceItem->DelayedStart = FALSE;
 
-    if (PhGetServiceTriggerInfo(serviceHandle, NULL))
+    if (NT_SUCCESS(PhGetServiceTriggerInfo(serviceHandle, NULL)))
         ServiceItem->HasTriggers = TRUE;
     else
         ServiceItem->HasTriggers = FALSE;

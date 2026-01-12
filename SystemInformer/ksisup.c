@@ -57,6 +57,10 @@ VOID KsiDebugLogFinalize(
     );
 #endif
 
+/**
+ * Get the kernel file name for the running system.
+ * \return PPH_STRING The kernel file name, or NULL on failure.
+ */
 PPH_STRING KsiGetKernelFileName(
     VOID
     )
@@ -76,6 +80,10 @@ PPH_STRING KsiGetKernelFileName(
     return NULL;
 }
 
+/**
+ * Maps the WindowsVersion enum to a human readable string.
+ * \return PCWSTR The human readable string for the Windows version.
+ */
 PCWSTR KsiGetWindowsVersionString(
     VOID
     )
@@ -126,15 +134,21 @@ PCWSTR KsiGetWindowsVersionString(
         return L"Windows 11 24H2";
     case WINDOWS_11_25H2:
         return L"Windows 11 25H2";
+    case WINDOWS_11_26H1:
+        return L"Windows 11 26H1";
     case WINDOWS_NEW:
         return L"Windows Insider Preview";
     }
 
-    static_assert(WINDOWS_MAX == WINDOWS_11_25H2, "KsiGetWindowsVersionString must include all versions");
+    static_assert(WINDOWS_MAX == WINDOWS_11_26H1, "KsiGetWindowsVersionString must include all versions");
 
     return L"Windows";
 }
 
+/**
+ * Return a formatted Windows build string derived from PhOsVersion.
+ * \return PPH_STRING The formatted Windows build string "Major.Minor.Build".
+ */
 PPH_STRING KsiGetWindowsBuildString(
     VOID
     )
@@ -150,6 +164,14 @@ PPH_STRING KsiGetWindowsBuildString(
     return PhFormat(format, RTL_NUMBER_OF(format), 0);
 }
 
+/**
+ * Get the kernel file version string cached from the kernel image.
+ *
+ * This uses an init-once pattern to load and cache the `FileVersion` field
+ * from the kernel image's version resource. The returned `PPH_STRING` is a
+ * referenced object and must be dereferenced by the caller.
+ * \return Referenced PPH_STRING containing the kernel file version, or NULL.
+ */
 PPH_STRING KsiGetKernelVersionString(
     VOID
     )
@@ -183,6 +205,15 @@ PPH_STRING KsiGetKernelVersionString(
     return NULL;
 }
 
+/**
+ * Populate `SupportData` with kernel image attributes useful for dynamic configuration lookup.
+ *
+ * This function caches the support data on first call and returns the cached
+ * structure on subsequent calls. It uses the kernel filename to inspect the
+ * mapped image headers and derives the class, machine, timestamp and size of
+ * image used for compatibility lookups.
+ * \param[out] SupportData Pointer to KSI_SUPPORT_DATA that receives the result.
+ */
 VOID KsiGetKernelSupportData(
     _Out_ PKSI_SUPPORT_DATA SupportData
     )
@@ -219,6 +250,13 @@ VOID KsiGetKernelSupportData(
     *SupportData = KsiSupportData;
 }
 
+/**
+ * Get a formatted support string that uniquely identifies the kernel image for dynamic data matching.
+ *
+ * The returned object is a referenced `PPH_STRING` and must be dereferenced by
+ * the caller. The string format is "%02x-%04x-%08x-%08x".
+ * \return Referenced `PPH_STRING` containing the kernel support string.
+ */
 PPH_STRING KsiGetKernelSupportString(
     VOID
     )
@@ -245,6 +283,14 @@ PPH_STRING KsiGetKernelSupportString(
     return PhReferenceObject(KsiSupportString);
 }
 
+/**
+ * Show the user a one-time warning if the process does not have full
+ * expected kernel protection capabilities.
+ *
+ * This function checks global settings and the current process state to
+ * determine whether to show a descriptive message. If the user dismisses and
+ * checks "don't show again" the global warning flag is disabled and persisted.
+ */
 VOID PhShowKsiStatus(
     VOID
     )
@@ -305,13 +351,28 @@ VOID PhShowKsiStatus(
             ))
         {
             PhEnableKsiWarnings = FALSE;
-            PhSetIntegerSetting(L"KsiEnableWarnings", FALSE);
+            PhSetIntegerSetting(SETTING_KSI_ENABLE_WARNINGS, FALSE);
         }
 
         PhDereferenceObject(infoString);
     }
 }
 
+/**
+ * Build a long-form diagnostic string containing application and kernel
+ * state and an optional formatted message.
+ *
+ * This helper assembles version, kernel, and process state information along
+ * with the provided format and arguments. The returned `PPH_STRING` is a
+ * referenced object that the caller must free via PhDereferenceObject().
+ *
+ * \param[in] Status NTSTATUS associated with the message (0 if none).
+ * \param[in] Force If TRUE the message will be shown even if warnings are
+ *                  disabled; used to control UI behaviour in callers.
+ * \param[in] Format Printf-style format string for the primary message body.
+ * \param[in] ArgPtr va_list of arguments for the Format.
+ * \return Referenced `PPH_STRING` containing the assembled message.
+ */
 PPH_STRING PhpGetKsiMessage(
     _In_opt_ NTSTATUS Status,
     _In_ BOOLEAN Force,
@@ -409,6 +470,24 @@ PPH_STRING PhpGetKsiMessage(
     return messageString;
 }
 
+/**
+ * Show the composed kernel message to the user either one-time or
+ * forced, depending on parameters.
+ *
+ * This wrapper uses PhpGetKsiMessage to build a detailed message string and
+ * displays it using the appropriate PhShowMessage* helper. If the user opts to
+ * suppress future warnings the global setting is cleared and persisted.
+ *
+ * \param[in] WindowHandle Parent window handle for UI.
+ * \param[in] Buttons Task dialog button flags (e.g., TD_OK_BUTTON).
+ * \param[in] Icon Icon resource id/name for the task dialog.
+ * \param[in] Status Optional NTSTATUS to include in the message.
+ * \param[in] Force Show a modal message; otherwise one-time message.
+ * \param[in] Title Title to display in the dialog.
+ * \param[in] Format Printf-style format string for the message.
+ * \param[in] ArgPtr va_list of arguments for Format.
+ * \return LONG result of the dialog interaction (e.g., IDOK, IDYES, IDNO).
+ */
 LONG PhpShowKsiMessage(
     _In_opt_ HWND WindowHandle,
     _In_ ULONG Buttons,
@@ -465,7 +544,7 @@ LONG PhpShowKsiMessage(
         if (checked)
         {
             PhEnableKsiWarnings = FALSE;
-            PhSetIntegerSetting(L"KsiEnableWarnings", FALSE);
+            PhSetIntegerSetting(SETTING_KSI_ENABLE_WARNINGS, FALSE);
         }
     }
 
@@ -474,6 +553,17 @@ LONG PhpShowKsiMessage(
     return result;
 }
 
+/**
+ * Public wrapper to build a message string via va-args.
+ *
+ * Convenience wrapper around PhpGetKsiMessage that accepts variable arguments.
+ * Caller receives a referenced `PPH_STRING` and must dereference it.
+ *
+ * \param[in] Status Optional NTSTATUS.
+ * \param[in] Force See PhpGetKsiMessage.
+ * \param[in] Format Printf-style format string.
+ * \return Referenced `PPH_STRING` with the assembled message.
+ */
 PPH_STRING PhGetKsiMessage(
     _In_opt_ NTSTATUS Status,
     _In_ BOOLEAN Force,
@@ -491,6 +581,11 @@ PPH_STRING PhGetKsiMessage(
     return message;
 }
 
+/**
+ * Public wrapper to display a message to the user with va-args.
+ *
+ * Calls PhpShowKsiMessage with variable argument list and returns dialog result.
+ */
 LONG PhShowKsiMessage2(
     _In_opt_ HWND WindowHandle,
     _In_ ULONG Buttons,
@@ -512,6 +607,11 @@ LONG PhShowKsiMessage2(
     return result;
  }
 
+/**
+ * Convenience function to show an informational message (OK) with va-args.
+ *
+ * This variant always uses TD_OK_BUTTON and forwards to PhpShowKsiMessage.
+ */
 VOID PhShowKsiMessageEx(
     _In_opt_ HWND WindowHandle,
     _In_opt_ PCWSTR Icon,
@@ -529,6 +629,11 @@ VOID PhShowKsiMessageEx(
     va_end(argptr);
 }
 
+/**
+ * Convenience function to show a forced OK message (no status, forced).
+ *
+ * Calls PhpShowKsiMessage forcing the message to be shown and using TD_OK_BUTTON.
+ */
 VOID PhShowKsiMessage(
     _In_opt_ HWND WindowHandle,
     _In_opt_ PCWSTR Icon,
@@ -544,6 +649,18 @@ VOID PhShowKsiMessage(
     va_end(argptr);
 }
 
+/**
+ * Restart the current process with optional additional command-line parameters
+ * and process mitigation attributes set.
+ *
+ * The function obtains the current process command-line, appends the supplied
+ * `AdditionalCommandLine` (if any), and creates a new process using
+ * PhCreateProcessWin32Ex with hardened mitigation attributes where supported.
+ *
+ * \param[in] AdditionalCommandLine Optional additional commandline to append.
+ * \return NTSTATUS of the attempted create; on success the current process
+ *         exits via PhExitApplication(STATUS_SUCCESS) after successful spawn.
+ */
 NTSTATUS PhRestartSelf(
     _In_ PCPH_STRINGREF AdditionalCommandLine
     )
@@ -639,6 +756,16 @@ NTSTATUS PhRestartSelf(
     return status;
 }
 
+/**
+ * Determine if an old temporary driver file 'ksi.dll-old' exists and try to delete it.
+ *
+ * This function checks the application directory for the existence of the
+ * legacy filename 'ksi.dll-old'. If it exists the function attempts to delete
+ * it; if deletion fails the function returns TRUE indicating that a reboot
+ * is likely required (the file is still locked).
+ * \return TRUE if an old KSI file remains (and may require reboot), FALSE if
+ *         no old file exists or deletion succeeded.
+ */
 BOOLEAN PhDoesOldKsiExist(
     VOID
     )
@@ -668,13 +795,18 @@ BOOLEAN PhDoesOldKsiExist(
     return result;
 }
 
+/**
+ * Obtain the configured KSI service name, falling back to default.
+ *
+ * \return Referenced `PPH_STRING` containing the service name.
+ */
 PPH_STRING PhGetKsiServiceName(
     VOID
     )
 {
     PPH_STRING string;
 
-    string = PhGetStringSetting(L"KsiServiceName");
+    string = PhGetStringSetting(SETTING_KSI_SERVICE_NAME);
 
     if (PhIsNullOrEmptyString(string))
     {
@@ -685,6 +817,17 @@ PPH_STRING PhGetKsiServiceName(
     return string;
 }
 
+/**
+ * KPH communication callback used by KsiConnect configuration.
+ *
+ * The callback forwards the message to the informer dispatch and also,
+ * when appropriate, forces a KPH cached required-state refresh when a
+ * RequiredStateFailure message relates to the current process.
+ *
+ * \param[in] ReplyToken Opaque reply token from KphComms.
+ * \param[in] Message Pointer to the KPH message to process.
+ * \return BOOLEAN value expected by KPH_COMMS_CALLBACK (TRUE/ FALSE).
+ */
 _Function_class_(KPH_COMMS_CALLBACK)
 BOOLEAN KsiCommsCallback(
     _In_ ULONG_PTR ReplyToken,
@@ -701,6 +844,18 @@ BOOLEAN KsiCommsCallback(
     return PhInformerDispatch(ReplyToken, Message);
 }
 
+/**
+ * Read a configuration file located in the application directory.
+ *
+ * This opens and reads the entire file into a buffer allocated by the Ph
+ * memory allocator. The caller receives ownership of `*Data` and must free it
+ * via PhFree(). On success `*Length` receives the byte length of the buffer.
+ *
+ * \param[in] FileName File name relative to application directory.
+ * \param[out] Data Receives pointer to allocated buffer with file contents.
+ * \param[out] Length Receives buffer length in bytes.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS KsiReadConfiguration(
     _In_ PCPH_STRINGREF FileName,
     _Out_ PBYTE* Data,
@@ -742,6 +897,17 @@ NTSTATUS KsiReadConfiguration(
     return status;
 }
 
+/**
+ * Validate dynamic configuration blob against the current kernel version.
+ *
+ * Performs a lookup using KphDynDataLookup matching the runtime kernel support
+ * data (class, machine, timestamp, size) to ensure the provided dynamic
+ * configuration applies to this kernel.
+ *
+ * \param[in] DynData Pointer to dynamic configuration buffer.
+ * \param[in] DynDataLength Buffer length in bytes.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS KsiValidateDynamicConfiguration(
     _In_ PBYTE DynData,
     _In_ ULONG DynDataLength
@@ -776,6 +942,20 @@ NTSTATUS KsiValidateDynamicConfiguration(
     return status;
 }
 
+/**
+ * Retrieve the dynamic configuration and its signature.
+ *
+ * This routine attempts to read a local `ksidyn.bin` and `ksidyn.sig` files,
+ * validate the dynamic configuration for the current kernel and return both
+ * the data and signature buffers to the caller. Caller owns the returned
+ * buffers and must free them using PhFree().
+ *
+ * \param[out] DynData Receives pointer to allocated dynamic data buffer.
+ * \param[out] DynDataLength Receives the length of the dynamic data buffer.
+ * \param[out] Signature Receives pointer to allocated signature buffer.
+ * \param[out] SignatureLength Receives length of the signature buffer.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS KsiGetDynData(
     _Out_ PBYTE* DynData,
     _Out_ PULONG DynDataLength,
@@ -835,6 +1015,11 @@ CleanupExit:
     return status;
 }
 
+/**
+ * Determine the on-disk kernel driver filename for the current application context.
+ *
+ * \return Referenced `PPH_STRING` containing the full driver filename.
+ */
 PPH_STRING PhGetKsiFileName(
     VOID
     )
@@ -860,6 +1045,12 @@ PPH_STRING PhGetKsiFileName(
     return applicationDirectory;
 }
 
+/**
+ * Get a temporary directory suitable for creating temporary files.
+ *
+ * Returns a referenced `PPH_STRING` representing the temporary directory
+ * for the running application context.
+ */
 PPH_STRING PhGetTemporaryKsiDirectory(
     VOID
     )
@@ -875,6 +1066,18 @@ PPH_STRING PhGetTemporaryKsiDirectory(
     return applicationDirectory;
 }
 
+/**
+ * Create a temporary copy of a driver file in the specified temporary directory.
+ *
+ * The function generates a filename based on the current system time, ensures
+ * the directory exists and copies `FileName` into `TempDirectory`. On success
+ * returns a referenced `PPH_STRING` in `*TempFileName` (caller owns reference).
+ *
+ * \param[in] FileName Existing driver filename to copy.
+ * \param[in] TempDirectory Directory to create the temporary file in.
+ * \param[out] TempFileName Receives referenced `PPH_STRING` of the created file.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS KsiCreateTemporaryDriverFile(
     _In_ PPH_STRING FileName,
     _In_ PPH_STRING TempDirectory,
@@ -911,7 +1114,17 @@ NTSTATUS KsiCreateTemporaryDriverFile(
     return status;
 }
 
-VOID KsiCreateRandomizedName(
+/**
+ * Create a randomized alphanumeric name with the given prefix.
+ *
+ * Generates an 8-12 character random alpha string and concatenates it to the
+ * provided prefix producing a new referenced `PPH_STRING` returned via `Name`.
+ *
+ * \param[in] Prefix Wide string prefix to prepend.
+ * \param[out] Name Receives referenced `PPH_STRING` containing the new name.
+ * \return BOOLEAN TRUE on success, FALSE on failure.
+ */
+BOOLEAN KsiCreateRandomizedName(
     _In_ PCWSTR Prefix,
     _Out_ PPH_STRING* Name
     )
@@ -920,13 +1133,23 @@ VOID KsiCreateRandomizedName(
     WCHAR buffer[13];
 
     length = (PhGenerateRandomNumber64() % 6) + 8; // 8-12 characters
-
     PhGenerateRandomAlphaString(buffer, length);
 
     *Name = PhConcatStrings2(Prefix, buffer);
+    return TRUE;
 }
 
-VOID KsiConnect(
+/**
+ * Connect to the kernel driver using the configured dynamic configuration.
+ *
+ * This function orchestrates reading dynamic configuration, validating it,
+ * ensuring the driver file exists, and attempting connection with multiple
+ * fallback strategies (temporary copy, service, NtLoadDriver etc...).
+ *
+ * \param[in] WindowHandle Optional parent window for UI prompts.
+ * \return NTSTATUS Successful or errant status.
+ */
+NTSTATUS KsiConnect(
     _In_opt_ HWND WindowHandle
     )
 {
@@ -1026,9 +1249,9 @@ VOID KsiConnect(
         goto CleanupExit;
     }
 
-    if (PhIsNullOrEmptyString(portName = PhGetStringSetting(L"KsiPortName")))
+    if (PhIsNullOrEmptyString(portName = PhGetStringSetting(SETTING_KSI_PORT_NAME)))
         PhClearReference(&portName);
-    if (PhIsNullOrEmptyString(altitude = PhGetStringSetting(L"KsiAltitude")))
+    if (PhIsNullOrEmptyString(altitude = PhGetStringSetting(SETTING_KSI_ALTITUDE)))
         PhClearReference(&altitude);
 
     config.FileName = &KsiFileName->sr;
@@ -1037,18 +1260,18 @@ VOID KsiConnect(
     config.PortName = (portName ? &portName->sr : NULL);
     config.Altitude = (altitude ? &altitude->sr : NULL);
     config.FsSupportedFeatures = 0;
-    if (!!PhGetIntegerSetting(L"KsiEnableFsFeatureOffloadRead"))
+    if (!!PhGetIntegerSetting(SETTING_KSI_ENABLE_FS_FEATURE_OFFLOAD_READ))
         SetFlag(config.FsSupportedFeatures, SUPPORTED_FS_FEATURES_OFFLOAD_READ);
-    if (!!PhGetIntegerSetting(L"KsiEnableFsFeatureOffloadWrite"))
+    if (!!PhGetIntegerSetting(SETTING_KSI_ENABLE_FS_FEATURE_OFFLOAD_WRITE))
         SetFlag(config.FsSupportedFeatures, SUPPORTED_FS_FEATURES_OFFLOAD_WRITE);
-    if (!!PhGetIntegerSetting(L"KsiEnableFsFeatureQueryOpen"))
+    if (!!PhGetIntegerSetting(SETTING_KSI_ENABLE_FS_FEATURE_QUERY_OPEN))
         SetFlag(config.FsSupportedFeatures, SUPPORTED_FS_FEATURES_QUERY_OPEN);
-    if (!!PhGetIntegerSetting(L"KsiEnableFsFeatureBypassIO"))
+    if (!!PhGetIntegerSetting(SETTING_KSI_ENABLE_FS_FEATURE_BYPASS_IO))
         SetFlag(config.FsSupportedFeatures, SUPPORTED_FS_FEATURES_BYPASS_IO);
     config.Flags.Flags = 0;
-    config.Flags.DisableImageLoadProtection = !!PhGetIntegerSetting(L"KsiDisableImageLoadProtection");
-    config.Flags.RandomizedPoolTag = !!PhGetIntegerSetting(L"KsiRandomizedPoolTag");
-    config.Flags.DynDataNoEmbedded = !!PhGetIntegerSetting(L"KsiDynDataNoEmbedded");
+    config.Flags.DisableImageLoadProtection = !!PhGetIntegerSetting(SETTING_KSI_DISABLE_IMAGE_LOAD_PROTECTION);
+    config.Flags.RandomizedPoolTag = !!PhGetIntegerSetting(SETTING_KSI_RANDOMIZED_POOL_TAG);
+    config.Flags.DynDataNoEmbedded = !!PhGetIntegerSetting(SETTING_KSI_DYN_DATA_NO_EMBEDDED);
     config.EnableNativeLoad = KsiEnableLoadNative;
     config.EnableFilterLoad = KsiEnableLoadFilter;
     config.Callback = KsiCommsCallback;
@@ -1082,7 +1305,7 @@ VOID KsiConnect(
         // existing temporary driver file, if one exists.
         //
 
-        tempFileName = PhGetStringSetting(L"KsiPreviousTemporaryDriverFile");
+        tempFileName = PhGetStringSetting(SETTING_KSI_PREVIOUS_TEMPORARY_DRIVER_FILE);
         if (tempFileName)
         {
             if (PhDoesFileExistWin32(PhGetString(tempFileName)))
@@ -1099,7 +1322,7 @@ VOID KsiConnect(
         {
             if (NT_SUCCESS(status = KsiCreateTemporaryDriverFile(ksiFileName, tempDriverDir, &tempFileName)))
             {
-                PhSetStringSetting(L"KsiPreviousTemporaryDriverFile", PhGetString(tempFileName));
+                PhSetStringSetting(SETTING_KSI_PREVIOUS_TEMPORARY_DRIVER_FILE, PhGetString(tempFileName));
 
                 config.FileName = &tempFileName->sr;
 
@@ -1157,11 +1380,11 @@ VOID KsiConnect(
             // clients to successfully connect or unload the natively loaded
             // driver.
             //
-            PhSetIntegerSetting(L"KsiEnableLoadNative", TRUE);
-            PhSetIntegerSetting(L"KsiEnableLoadFilter", FALSE);
-            PhSetStringSetting2(L"KsiServiceName", &randomServiceName->sr);
-            PhSetStringSetting2(L"KsiPortName", &randomPortName->sr);
-            PhSetStringSetting2(L"KsiObjectName", &randomObjectName->sr);
+            PhSetIntegerSetting(SETTING_KSI_ENABLE_LOAD_NATIVE, TRUE);
+            PhSetIntegerSetting(SETTING_KSI_ENABLE_LOAD_FILTER, FALSE);
+            PhSetStringSetting2(SETTING_KSI_SERVICE_NAME, &randomServiceName->sr);
+            PhSetStringSetting2(SETTING_KSI_PORT_NAME, &randomPortName->sr);
+            PhSetStringSetting2(SETTING_KSI_OBJECT_NAME, &randomObjectName->sr);
 
             PhSaveSettings2(PhSettingsFileName);
 
@@ -1233,10 +1456,10 @@ VOID KsiConnect(
         ACCESS_MASK process = 0;
         ACCESS_MASK thread = 0;
 
-        if (PhGetIntegerSetting(L"KsiEnableUnloadProtection"))
+        if (PhGetIntegerSetting(SETTING_KSI_ENABLE_UNLOAD_PROTECTION))
             KphAcquireDriverUnloadProtection(NULL, NULL);
 
-        switch (PhGetIntegerSetting(L"KsiClientProcessProtectionLevel"))
+        switch (PhGetIntegerSetting(SETTING_KSI_CLIENT_PROCESS_PROTECTION_LEVEL))
         {
         case 2:
             process |= (PROCESS_VM_READ | PROCESS_QUERY_INFORMATION);
@@ -1271,8 +1494,16 @@ CleanupExit:
 #ifdef DEBUG
     KsiDebugLogInitialize();
 #endif
+
+    return status;
 }
 
+/**
+ * Thread callback routine that initializes KSI and notifies the originating window.
+ * \param[in] CallbackContext Optional HWND passed as a void*; if provided
+ * the routine sends TDM_CLICK_BUTTON to the window when initialization completes.
+ * \return NTSTATUS Successful or errant status.
+ */
 _Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS KsiInitializeCallbackThread(
     _In_opt_ PVOID CallbackContext
@@ -1292,6 +1523,19 @@ NTSTATUS KsiInitializeCallbackThread(
     return STATUS_SUCCESS;
 }
 
+/**
+ * Dialog callback invoked by the splash screen TaskDialogIndirect.
+ *
+ * Handles creation notification by spawning the initialization thread and
+ * updates marquee/timer UI. Also handles cancel button to abort the dialog.
+ *
+ * \param[in] WindowHandle HWND of the task dialog.
+ * \param[in] Notification Task dialog notification code.
+ * \param[in] wParam Notification-specific parameter.
+ * \param[in] lParam Notification-specific parameter.
+ * \param[in] Context User defined context pointer (unused).
+ * \return HRESULT S_OK to continue default processing, S_FALSE to abort dialog.
+ */
 static HRESULT CALLBACK KsiSplashScreenDialogCallbackProc(
     _In_ HWND WindowHandle,
     _In_ UINT Notification,
@@ -1348,6 +1592,12 @@ static HRESULT CALLBACK KsiSplashScreenDialogCallbackProc(
     return S_OK;
 }
 
+/**
+ * Display a splash screen while the kernel driver initializes.
+ *
+ * This function configures and invokes a TaskDialogIndirect with a marquee
+ * progress bar and callback to spawn the initialization thread.
+ */
 VOID KsiShowInitializingSplashScreen(
     VOID
     )
@@ -1368,6 +1618,14 @@ VOID KsiShowInitializingSplashScreen(
     TaskDialogIndirect(&config, NULL, NULL, NULL);
 }
 
+/**
+ * Initialize the KSI subsystem for the application.
+ *
+ * Checks preconditions (elevation, OS version, architecture, old leftover
+ * files) and then initializes underlying Kph and informer subsystems. If the
+ * splash-screen setting is enabled the initialization will be done asynchronously
+ * with a UI; otherwise initialization is performed synchronously.
+ */
 VOID PhInitializeKsi(
     VOID
     )
@@ -1435,17 +1693,26 @@ VOID PhInitializeKsi(
 
     KsiFileName = PhGetKsiFileName();
     KsiServiceName = PhGetKsiServiceName();
-    if (PhIsNullOrEmptyString(KsiObjectName = PhGetStringSetting(L"KsiObjectName")))
+    if (PhIsNullOrEmptyString(KsiObjectName = PhGetStringSetting(SETTING_KSI_OBJECT_NAME)))
         PhMoveReference(&KsiObjectName, PhCreateString(KPH_OBJECT_NAME));
-    KsiEnableLoadNative = !!PhGetIntegerSetting(L"KsiEnableLoadNative");
-    KsiEnableLoadFilter = !!PhGetIntegerSetting(L"KsiEnableLoadFilter");
+    KsiEnableLoadNative = !!PhGetIntegerSetting(SETTING_KSI_ENABLE_LOAD_NATIVE);
+    KsiEnableLoadFilter = !!PhGetIntegerSetting(SETTING_KSI_ENABLE_LOAD_FILTER);
 
-    if (PhGetIntegerSetting(L"KsiEnableSplashScreen"))
+    if (PhGetIntegerSetting(SETTING_KSI_ENABLE_SPLASH_SCREEN))
         KsiShowInitializingSplashScreen();
     else
         KsiInitializeCallbackThread(NULL);
 }
 
+/**
+ * Cleanup KSI subsystems and optionally unload the driver on exit.
+ *
+ * If the communications channel is connected this will stop communications and,
+ * depending on settings and client count, attempt to stop and unload the
+ * driver service. Returns the NTSTATUS of the unload operation when attempted.
+ * \return STATUS_SUCCESS when no unload required or unload succeeded, otherwise
+ *         an NTSTATUS indicating the error encountered during service stop.
+ */
 NTSTATUS PhCleanupKsi(
     VOID
     )
@@ -1457,10 +1724,10 @@ NTSTATUS PhCleanupKsi(
     if (!KphCommsIsConnected())
         return STATUS_SUCCESS;
 
-    if (PhGetIntegerSetting(L"KsiEnableUnloadProtection"))
+    if (PhGetIntegerSetting(SETTING_KSI_ENABLE_UNLOAD_PROTECTION))
         KphReleaseDriverUnloadProtection(NULL, NULL);
 
-    if (PhGetIntegerSetting(L"KsiUnloadOnExit"))
+    if (PhGetIntegerSetting(SETTING_KSI_UNLOAD_ON_EXIT))
     {
         ULONG clientCount;
 
@@ -1492,6 +1759,19 @@ NTSTATUS PhCleanupKsi(
     return status;
 }
 
+/**
+ * Parse a hex-encoded JSON settings blob to extract KSI settings.
+ *
+ * The function decodes the hex string stored in `KsiSettingsBlob`, parses the
+ * JSON and extracts "KsiDirectory" and "KsiServiceName" entries. If both are
+ * present the function sets `*Directory` and `*ServiceName` to referenced
+ * strings that the caller must dereference.
+ *
+ * \param[in] KsiSettingsBlob Hex-encoded buffer stored as a PPH_STRING.
+ * \param[out] Directory Receives referenced `PPH_STRING` of the directory.
+ * \param[out] ServiceName Receives referenced `PPH_STRING` of the service name.
+ * \return TRUE if both values were found and returned, FALSE otherwise.
+ */
 _Success_(return)
 BOOLEAN PhParseKsiSettingsBlob(
     _In_ PPH_STRING KsiSettingsBlob,
@@ -1539,6 +1819,15 @@ BOOLEAN PhParseKsiSettingsBlob(
 }
 
 // Note: Exported from appsup.h (dmex)
+/**
+ * Create a small configuration blob containing the KSI directory and service name.
+ *
+ * This helper constructs a JSON object containing the current `KsiDirectory`
+ * and `KsiServiceName`, converts it to a UTF-8 JSON string, and returns the
+ * value encoded as a hex string `PPH_STRING`. The returned string is a
+ * referenced object and the caller must free it.
+ * \return Referenced `PPH_STRING` containing the hex-encoded JSON settings.
+ */
 PVOID PhCreateKsiSettingsBlob(
     VOID
     )
@@ -1582,6 +1871,25 @@ PVOID PhCreateKsiSettingsBlob(
     return string;
 }
 
+/**
+ * Measures latency of the KPH driver using its performance counter interface.
+ *
+ * If the current KSI level is below KphLevelLow, the function sets all output
+ * values to zero and returns STATUS_UNSUCCESSFUL. Otherwise it queries the KPH
+ * performance counter and measures timestamps before and after the kernel call
+ * to compute:
+ *
+ *  - Duration:     Total round-trip time (local wall clock)
+ *  - DurationDown: Time spent entering the kernel (downstream)
+ *  - DurationUp:   Time spent returning from the kernel (upstream)
+ *
+ * \param[out] Duration      Total measured duration.
+ * \param[out] DurationDown  Time spent sending the request to the kernel.
+ * \param[out] DurationUp    Time spent recieving the response from the kernel.
+ * \return NTSTATUS from KphQueryPerformanceCounter, or STATUS_UNSUCCESSFUL.
+ * \remarks Use this function when you need a kernel-reported high-resolution
+ * timebase to measure or correlate user/kernel timing.
+ */
 NTSTATUS PhQueryKphCounters(
     _Out_ PULONG64 Duration,
     _Out_ PULONG64 DurationDown,

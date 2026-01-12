@@ -26,11 +26,13 @@
 #include <phsettings.h>
 #include <procprv.h>
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PhpNetworkNodeHashtableEqualFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
     );
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PhpNetworkNodeHashtableHashFunction(
     _In_ PVOID Entry
     );
@@ -40,6 +42,7 @@ VOID PhpRemoveNetworkNode(
     _In_opt_ PVOID Context
     );
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpNetworkTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,
@@ -92,6 +95,7 @@ VOID PhNetworkTreeListInitialization(
     NetworkNodeList = PhCreateList(100);
 }
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PhpNetworkNodeHashtableEqualFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
@@ -103,6 +107,7 @@ BOOLEAN PhpNetworkNodeHashtableEqualFunction(
     return networkNode1->NetworkItem == networkNode2->NetworkItem;
 }
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PhpNetworkNodeHashtableHashFunction(
     _In_ PVOID Entry
     )
@@ -188,13 +193,13 @@ VOID PhLoadSettingsNetworkTreeList(
     PPH_STRING settings;
     PPH_STRING sortSettings;
 
-    settings = PhGetStringSetting(L"NetworkTreeListColumns");
-    sortSettings = PhGetStringSetting(L"NetworkTreeListSort");
+    settings = PhGetStringSetting(SETTING_NETWORK_TREE_LIST_COLUMNS);
+    sortSettings = PhGetStringSetting(SETTING_NETWORK_TREE_LIST_SORT);
     PhCmLoadSettingsEx(NetworkTreeListHandle, &NetworkTreeListCm, 0, &settings->sr, &sortSettings->sr);
     PhDereferenceObject(settings);
     PhDereferenceObject(sortSettings);
 
-    if (PhGetIntegerSetting(L"EnableInstantTooltips"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_INSTANT_TOOLTIPS))
         SendMessage(TreeNew_GetTooltips(NetworkTreeListHandle), TTM_SETDELAYTIME, TTDT_INITIAL, 0);
     else
         SendMessage(TreeNew_GetTooltips(NetworkTreeListHandle), TTM_SETDELAYTIME, TTDT_AUTOPOP, MAXSHORT);
@@ -210,8 +215,8 @@ VOID PhSaveSettingsNetworkTreeList(
     PPH_STRING sortSettings;
 
     settings = PhCmSaveSettingsEx(NetworkTreeListHandle, &NetworkTreeListCm, 0, &sortSettings);
-    PhSetStringSetting2(L"NetworkTreeListColumns", &settings->sr);
-    PhSetStringSetting2(L"NetworkTreeListSort", &sortSettings->sr);
+    PhSetStringSetting2(SETTING_NETWORK_TREE_LIST_COLUMNS, &settings->sr);
+    PhSetStringSetting2(SETTING_NETWORK_TREE_LIST_SORT, &sortSettings->sr);
     PhDereferenceObject(settings);
     PhDereferenceObject(sortSettings);
 }
@@ -220,7 +225,7 @@ VOID PhReloadSettingsNetworkTreeList(
     VOID
     )
 {
-    if (PhGetIntegerSetting(L"EnableInstantTooltips"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_INSTANT_TOOLTIPS))
         SendMessage(TreeNew_GetTooltips(NetworkTreeListHandle), TTM_SETDELAYTIME, TTDT_INITIAL, 0);
     else
         SendMessage(TreeNew_GetTooltips(NetworkTreeListHandle), TTM_SETDELAYTIME, TTDT_AUTOPOP, MAXSHORT);
@@ -396,6 +401,7 @@ VOID PhTickNetworkNodes(
     return PhModifySort(sortResult, NetworkTreeListSortOrder); \
 }
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpNetworkTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,
@@ -823,7 +829,7 @@ BOOLEAN NTAPI PhpNetworkTreeNewCallback(
 
                     PhCustomDrawTreeTimeLine(
                         customDraw->Dc,
-                        customDraw->CellRect,
+                        &customDraw->CellRect,
                         PhEnableThemeSupport ? PH_DRAW_TIMELINE_DARKTHEME : 0,
                         NULL,
                         &networkItem->CreateTime
@@ -1044,16 +1050,27 @@ VOID PhDeselectAllNetworkNodes(
     TreeNew_DeselectRange(NetworkTreeListHandle, 0, -1);
 }
 
-VOID PhSelectAndEnsureVisibleNetworkNode(
+BOOLEAN PhSelectAndEnsureVisibleNetworkNode(
     _In_ PPH_NETWORK_NODE NetworkNode
     )
 {
     PhDeselectAllNetworkNodes();
 
-    if (!NetworkNode->Node.Visible)
-        return;
-
-    TreeNew_FocusMarkSelectNode(NetworkTreeListHandle, &NetworkNode->Node);
+    if (NetworkNode->Node.Visible)
+    {
+        TreeNew_FocusMarkSelectNode(NetworkTreeListHandle, &NetworkNode->Node);
+        return TRUE;
+    }
+    else
+    {
+        PhShowInformation2(
+            PhMainWndHandle,
+            L"Unable to perform the operation.",
+            L"%s",
+            L"This node cannot be displayed because it is currently hidden by your active filter settings or preferences."
+            );
+        return FALSE;
+    }
 }
 
 VOID PhInvalidateAllNetworkNodes(

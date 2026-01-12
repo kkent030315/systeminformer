@@ -29,7 +29,7 @@ typedef struct _PH_SEARCHCONTROL_BUTTON
             ULONG Pushed : 1;
             ULONG Active : 1;
             ULONG Error : 1;
-            ULONG Spare : 29;
+            ULONG Spare : 28;
         };
     };
 
@@ -50,8 +50,9 @@ typedef struct _PH_SEARCHCONTROL_CONTEXT
         {
             ULONG Hot : 1;
             ULONG HotTrack : 1;
+            ULONG WindowFocus : 1;
             ULONG UseSearchPointer : 1;
-            ULONG Spare : 29;
+            ULONG Spare : 28;
         };
     };
 
@@ -311,7 +312,7 @@ VOID PhpSearchControlCreateTooltip(
         CW_USEDEFAULT,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        NULL,
+        ParentWindow,
         NULL,
         NULL,
         NULL
@@ -599,8 +600,16 @@ BOOLEAN PhpSearchUpdateText(
     //    return FALSE;
     //}
 
-    if (!PhGetSearchTextToBuffer(WindowHandle, Context, searchboxTextBuffer, RTL_NUMBER_OF(searchboxTextBuffer), &searchboxTextBufferLength))
+    if (!PhGetSearchTextToBuffer(
+        WindowHandle,
+        Context,
+        searchboxTextBuffer,
+        RTL_NUMBER_OF(searchboxTextBuffer),
+        &searchboxTextBufferLength
+        ))
+    {
         return FALSE;
+    }
 
     newSearchboxText.Buffer = searchboxTextBuffer;
     newSearchboxText.Length = searchboxTextBufferLength * sizeof(WCHAR);
@@ -733,12 +742,15 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
             ULONG flags;
             HRGN updateRegion;
 
+            if (!PhGetWindowRect(WindowHandle, &windowRect))
+                break;
+
             updateRegion = (HRGN)wParam;
 
             if (updateRegion == HRGN_FULL)
                 updateRegion = NULL;
 
-            flags = DCX_WINDOW | DCX_LOCKWINDOWUPDATE | DCX_USESTYLE;
+            flags = DCX_WINDOW | DCX_CACHE | DCX_USESTYLE;
 
             if (updateRegion)
                 flags |= DCX_INTERSECTRGN | DCX_NODELETERGN;
@@ -748,8 +760,6 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
                 RECT windowRectStart;
                 RECT bufferRect;
 
-                // Get the screen coordinates of the window.
-                GetWindowRect(WindowHandle, &windowRect);
                 // Adjust the coordinates (start from 0,0).
                 PhOffsetRect(&windowRect, -windowRect.left, -windowRect.top);
                 windowRectStart = windowRect;
@@ -781,7 +791,10 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
                 }
 
                 if (!context->BufferedDc)
+                {
+                    ReleaseDC(WindowHandle, hdc);
                     break;
+                }
 
                 if (GetFocus() == WindowHandle)
                 {
@@ -840,47 +853,54 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
             RECT buttonRect;
 
             // Get the screen coordinates of the mouse.
-            if (!GetCursorPos(&windowPoint))
-                break;
+            //if (!PhGetCursorPos(&windowPoint))
+            //    break;
+            windowPoint.x = GET_X_LPARAM(lParam);
+            windowPoint.y = GET_Y_LPARAM(lParam);
 
             // Get the screen coordinates of the window.
-            GetWindowRect(WindowHandle, &windowRect);
+            if (!PhGetWindowRect(WindowHandle, &windowRect))
+                break;
 
             // Get the position of the inserted buttons.
             PhpSearchControlButtonRect(context, &context->SearchButton, &windowRect, &buttonRect);
-            if (PhPtInRect(&buttonRect, windowPoint))
+            if (PhPtInRect(&buttonRect, &windowPoint))
                 return HTBORDER;
 
             PhpSearchControlButtonRect(context, &context->RegexButton, &windowRect, &buttonRect);
-            if (PhPtInRect(&buttonRect, windowPoint))
+            if (PhPtInRect(&buttonRect, &windowPoint))
                 return HTBORDER;
 
             PhpSearchControlButtonRect(context, &context->CaseButton, &windowRect, &buttonRect);
-            if (PhPtInRect(&buttonRect, windowPoint))
+            if (PhPtInRect(&buttonRect, &windowPoint))
                 return HTBORDER;
         }
         break;
     case WM_NCLBUTTONDOWN:
         {
+            UINT codeHitTest = (UINT)wParam;
             POINT windowPoint;
             RECT windowRect;
             RECT buttonRect;
 
             // Get the screen coordinates of the mouse.
-            if (!GetCursorPos(&windowPoint))
-                break;
+            //if (!PhGetMessagePos(&windowPoint))
+            //    break;
+            windowPoint.x = GET_X_LPARAM(lParam);
+            windowPoint.y = GET_Y_LPARAM(lParam);
 
             // Get the screen coordinates of the window.
-            GetWindowRect(WindowHandle, &windowRect);
+            if (!PhGetWindowRect(WindowHandle, &windowRect))
+                break;
 
             PhpSearchControlButtonRect(context, &context->SearchButton, &windowRect, &buttonRect);
-            context->SearchButton.Pushed = PhPtInRect(&buttonRect, windowPoint);
+            context->SearchButton.Pushed = PhPtInRect(&buttonRect, &windowPoint);
 
             PhpSearchControlButtonRect(context, &context->RegexButton, &windowRect, &buttonRect);
-            context->RegexButton.Pushed = PhPtInRect(&buttonRect, windowPoint);
+            context->RegexButton.Pushed = PhPtInRect(&buttonRect, &windowPoint);
 
             PhpSearchControlButtonRect(context, &context->CaseButton, &windowRect, &buttonRect);
-            context->CaseButton.Pushed = PhPtInRect(&buttonRect, windowPoint);
+            context->CaseButton.Pushed = PhPtInRect(&buttonRect, &windowPoint);
 
             SetCapture(WindowHandle);
             RedrawWindow(WindowHandle, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
@@ -893,14 +913,15 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
             RECT buttonRect;
 
             // Get the screen coordinates of the mouse.
-            if (!GetCursorPos(&windowPoint))
+            if (!PhGetMessagePos(&windowPoint))
                 break;
 
             // Get the screen coordinates of the window.
-            GetWindowRect(WindowHandle, &windowRect);
+            if (!PhGetWindowRect(WindowHandle, &windowRect))
+                break;
 
             PhpSearchControlButtonRect(context, &context->SearchButton, &windowRect, &buttonRect);
-            if (PhPtInRect(&buttonRect, windowPoint))
+            if (PhPtInRect(&buttonRect, &windowPoint))
             {
                 SetFocus(WindowHandle);
                 PhSetWindowText(WindowHandle, L"");
@@ -908,7 +929,7 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
             }
 
             PhpSearchControlButtonRect(context, &context->RegexButton, &windowRect, &buttonRect);
-            if (PhPtInRect(&buttonRect, windowPoint))
+            if (PhPtInRect(&buttonRect, &windowPoint))
             {
                 context->RegexButton.Active = !context->RegexButton.Active;
                 PhSetIntegerSetting(context->RegexSetting, context->RegexButton.Active);
@@ -916,7 +937,7 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
             }
 
             PhpSearchControlButtonRect(context, &context->CaseButton, &windowRect, &buttonRect);
-            if (PhPtInRect(&buttonRect, windowPoint))
+            if (PhPtInRect(&buttonRect, &windowPoint))
             {
                 context->CaseButton.Active = !context->CaseButton.Active;
                 PhSetIntegerSetting(context->CaseSetting, context->CaseButton.Active);
@@ -1044,16 +1065,24 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
             LRESULT result = CallWindowProc(oldWndProc, WindowHandle, WindowMessage, wParam, lParam);
 
             PhpSearchUpdateText(WindowHandle, context, FALSE);
+
             RedrawWindow(WindowHandle, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 
             return result;
         }
         break;
-    case WM_KILLFOCUS:
-        RedrawWindow(WindowHandle, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
-        break;
     case WM_SETFOCUS:
-        context->PreviousFocusWindowHandle = (HWND)wParam;
+        {
+            context->WindowFocus = TRUE;
+            context->PreviousFocusWindowHandle = (HWND)wParam;
+        }
+        break;
+    case WM_KILLFOCUS:
+        {
+            context->WindowFocus = FALSE;
+
+            RedrawWindow(WindowHandle, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+        }
         break;
     case WM_SETTINGCHANGE:
     case WM_SYSCOLORCHANGE:
@@ -1077,23 +1106,24 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
             RECT buttonRect;
 
             // Get the screen coordinates of the mouse.
-            if (!GetCursorPos(&windowPoint))
+            if (!PhGetMessagePos(&windowPoint))
+                break;
+            // Get the screen coordinates of the window.
+            if (!PhGetWindowRect(WindowHandle, &windowRect))
                 break;
 
-            // Get the screen coordinates of the window.
-            GetWindowRect(WindowHandle, &windowRect);
-            context->Hot = PhPtInRect(&windowRect, windowPoint);
+            context->Hot = PhPtInRect(&windowRect, &windowPoint);
 
             PhpSearchControlButtonRect(context, &context->RegexButton, &windowRect, &buttonRect);
-            context->RegexButton.Hot = PhPtInRect(&buttonRect, windowPoint);
+            context->RegexButton.Hot = PhPtInRect(&buttonRect, &windowPoint);
 
             if (context->RegexButton.Hot)
             {
-                PhpSearchControlCreateTooltip(context, &context->RegexButton, WindowHandle, &buttonRect, L"Use Regular Expression");
+                PhpSearchControlCreateTooltip(context, &context->RegexButton, WindowHandle, &buttonRect, L"Regular Expression");
             }
 
             PhpSearchControlButtonRect(context, &context->CaseButton, &windowRect, &buttonRect);
-            context->CaseButton.Hot = PhPtInRect(&buttonRect, windowPoint);
+            context->CaseButton.Hot = PhPtInRect(&buttonRect, &windowPoint);
 
             if (context->CaseButton.Hot)
             {
@@ -1101,7 +1131,7 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
             }
 
             PhpSearchControlButtonRect(context, &context->SearchButton, &windowRect, &buttonRect);
-            context->SearchButton.Hot = PhPtInRect(&buttonRect, windowPoint);
+            context->SearchButton.Hot = PhPtInRect(&buttonRect, &windowPoint);
 
             if (context->SearchButton.Hot)
             {
@@ -1134,22 +1164,21 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
 
             context->HotTrack = FALSE;
 
-            // Get the screen coordinates of the mouse.
-            if (!GetCursorPos(&windowPoint))
+            if (!PhGetMessagePos(&windowPoint))
+                break;
+            if (!PhGetWindowRect(WindowHandle, &windowRect))
                 break;
 
-            // Get the screen coordinates of the window.
-            GetWindowRect(WindowHandle, &windowRect);
-            context->Hot = PhPtInRect(&windowRect, windowPoint);
+            context->Hot = PhPtInRect(&windowRect, &windowPoint);
 
             PhpSearchControlButtonRect(context, &context->SearchButton, &windowRect, &buttonRect);
-            context->SearchButton.Hot = PhPtInRect(&buttonRect, windowPoint);
+            context->SearchButton.Hot = PhPtInRect(&buttonRect, &windowPoint);
 
             PhpSearchControlButtonRect(context, &context->RegexButton, &windowRect, &buttonRect);
-            context->RegexButton.Hot = PhPtInRect(&buttonRect, windowPoint);
+            context->RegexButton.Hot = PhPtInRect(&buttonRect, &windowPoint);
 
             PhpSearchControlButtonRect(context, &context->CaseButton, &windowRect, &buttonRect);
-            context->CaseButton.Hot = PhPtInRect(&buttonRect, windowPoint);
+            context->CaseButton.Hot = PhPtInRect(&buttonRect, &windowPoint);
 
             RedrawWindow(WindowHandle, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
         }
@@ -1158,26 +1187,25 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
         {
             if (
                 PhIsNullOrEmptyString(context->CueBannerText) ||
-                GetFocus() == WindowHandle ||
+                context->WindowFocus || // GetFocus() == WindowHandle ||
                 CallWindowProc(oldWndProc, WindowHandle, WM_GETTEXTLENGTH, 0, 0) > 0 // Edit_GetTextLength
                 )
             {
-                return CallWindowProc(oldWndProc, WindowHandle, WindowMessage, wParam, lParam);
+                goto SubclassWndProc;
             }
 
             PAINTSTRUCT paintStruct;
+            RECT clientRect;
             HDC hdc;
 
             if (hdc = BeginPaint(WindowHandle, &paintStruct))
             {
                 HDC bufferDc;
-                RECT clientRect;
                 HFONT oldFont;
                 HBITMAP bufferBitmap;
                 HBITMAP oldBufferBitmap;
 
-                GetClientRect(WindowHandle, &clientRect);
-
+                clientRect = paintStruct.rcPaint;
                 bufferDc = CreateCompatibleDC(hdc);
                 bufferBitmap = CreateCompatibleBitmap(hdc, clientRect.right, clientRect.bottom);
                 oldBufferBitmap = SelectBitmap(bufferDc, bufferBitmap);
@@ -1298,12 +1326,15 @@ LRESULT CALLBACK PhpSearchWndSubclassProc(
         return TRUE;
     }
 
+SubclassWndProc:
     return CallWindowProc(oldWndProc, WindowHandle, WindowMessage, wParam, lParam);
+//DefaultWndProc:
+//    return DefWindowProc(WindowHandle, WindowMessage, wParam, lParam);
 }
 
 VOID PhCreateSearchControlEx(
     _In_ HWND ParentWindowHandle,
-    _In_ HWND WindowHandle,
+    _In_ HWND SearchWindowHandle,
     _In_opt_ PCWSTR BannerText,
     _In_ PVOID ImageBaseAddress,
     _In_ PCWSTR SearchButtonResource,
@@ -1339,12 +1370,20 @@ VOID PhCreateSearchControlEx(
     context->CaseButton.Active = !!PhGetIntegerSetting(context->CaseSetting);
 
     // Subclass the Edit control window procedure.
-    context->DefaultWindowProc = PhGetWindowProcedure(WindowHandle);
-    PhSetWindowContext(WindowHandle, SHRT_MAX, context);
-    PhSetWindowProcedure(WindowHandle, PhpSearchWndSubclassProc);
+    context->DefaultWindowProc = PhGetWindowProcedure(SearchWindowHandle);
+    PhSetWindowContext(SearchWindowHandle, SHRT_MAX, context);
+    PhSetWindowProcedure(SearchWindowHandle, PhpSearchWndSubclassProc);
 
     // Initialize the theme parameters.
-    PhpSearchControlThemeChanged(context, WindowHandle);
+    PhpSearchControlThemeChanged(context, SearchWindowHandle);
+}
+
+VOID PhSearchControlClear(
+    _In_ HWND SearchWindowHandle
+    )
+{
+    SetFocus(SearchWindowHandle);
+    PhSetWindowText(SearchWindowHandle, L"");
 }
 
 BOOLEAN PhSearchControlMatch(

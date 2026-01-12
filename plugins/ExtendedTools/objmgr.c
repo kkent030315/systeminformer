@@ -193,11 +193,13 @@ VOID NTAPI EtpObjectManagerSortAndSelectOld(
     _In_opt_ PPH_STRING oldSelection
     );
 
+_Function_class_(PH_SEARCHCONTROL_CALLBACK)
 VOID NTAPI EtpObjectManagerSearchControlCallback(
     _In_ ULONG_PTR MatchHandle,
     _In_opt_ PVOID Context
     );
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS EtpTargetResolverWorkThreadStart(
     _In_ PVOID Parameter
     );
@@ -537,7 +539,7 @@ VOID EtInitializeListImages(
     DestroyIcon(icon);
 }
 
-static BOOLEAN NTAPI EtEnumDirectoryObjectsCallback(
+static NTSTATUS NTAPI EtEnumDirectoryObjectsCallback(
     _In_ HANDLE RootDirectory,
     _In_ PCPH_STRINGREF Name,
     _In_ PCPH_STRINGREF TypeName,
@@ -570,7 +572,8 @@ static BOOLEAN NTAPI EtEnumDirectoryObjectsCallback(
     return TRUE;
 }
 
-static BOOLEAN NTAPI EtEnumCurrentDirectoryObjectsCallback(
+_Function_class_(PH_ENUM_DIRECTORY_OBJECTS)
+static NTSTATUS NTAPI EtEnumCurrentDirectoryObjectsCallback(
     _In_ HANDLE RootDirectory,
     _In_ PCPH_STRINGREF Name,
     _In_ PCPH_STRINGREF TypeName,
@@ -720,7 +723,7 @@ static BOOLEAN NTAPI EtEnumCurrentDirectoryObjectsCallback(
         PhAddItemList(Context->CurrentDirectoryList, entry);
     }
 
-    return TRUE;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS EtTreeViewEnumDirectoryObjects(
@@ -768,6 +771,7 @@ NTSTATUS EtTreeViewEnumDirectoryObjects(
     return status;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS EtpTargetResolverThreadStart(
     _In_ PVOID Parameter
     )
@@ -846,6 +850,7 @@ NTSTATUS EtpTargetResolverThreadStart(
     return status;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS EtpTargetResolverWorkThreadStart(
     _In_ PVOID Parameter
     )
@@ -1580,7 +1585,7 @@ NTSTATUS EtObjectManagerOpenHandle(
         case EtObjectAlpcPort:
             {
                 static PH_INITONCE initOnce = PH_INITONCE_INIT;
-                static __typeof__(&NtAlpcConnectPortEx) NtAlpcConnectPortEx_I = NULL;
+                static typeof(&NtAlpcConnectPortEx) NtAlpcConnectPortEx_I = NULL;
                 LARGE_INTEGER timeout;
 
                 if (PhBeginInitOnce(&initOnce))
@@ -1750,7 +1755,7 @@ NTSTATUS EtObjectManagerOpenHandle(
         case EtObjectWindowStation:
             {
                 static PH_INITONCE initOnce = PH_INITONCE_INIT;
-                static __typeof__(&NtUserOpenWindowStation) NtUserOpenWindowStation_I = NULL;
+                static typeof(&NtUserOpenWindowStation) NtUserOpenWindowStation_I = NULL;
                 HANDLE windowStationHandle;
 
                 if (PhBeginInitOnce(&initOnce))
@@ -1803,7 +1808,7 @@ NTSTATUS EtObjectManagerOpenHandle(
         case EtObjectMemoryPartition:
             {
                 static PH_INITONCE initOnce = PH_INITONCE_INIT;
-                static __typeof__(&NtOpenPartition) NtOpenPartition_I = NULL;
+                static typeof(&NtOpenPartition) NtOpenPartition_I = NULL;
 
                 if (PhBeginInitOnce(&initOnce))
                 {
@@ -1820,7 +1825,7 @@ NTSTATUS EtObjectManagerOpenHandle(
         case EtObjectCpuPartition:
             {
                 static PH_INITONCE initOnce = PH_INITONCE_INIT;
-                static __typeof__(&NtOpenCpuPartition) NtOpenCpuPartition_I = NULL;
+                static typeof(&NtOpenCpuPartition) NtOpenCpuPartition_I = NULL;
 
                 if (PhBeginInitOnce(&initOnce))
                 {
@@ -2326,7 +2331,7 @@ VOID NTAPI EtpObjectManagerObjectProperties(
     EtObjectManagerPropIcon = PhImageListGetIcon(context->ListImageList, Entry->EtObjectType, ILD_NORMAL | ILD_TRANSPARENT);
 
     // Object Manager plugin window
-    PhShowHandlePropertiesEx(context->WindowHandle, processId, handleItem, PluginInstance, PhGetString(Entry->TypeName));
+    //PhShowHandlePropertiesEx(context->WindowHandle, processId, handleItem, PluginInstance, PhGetString(Entry->TypeName));
 
     PhDereferenceObject(Entry);
     PhDereferenceObject(objectContext.CurrentPath);
@@ -2450,7 +2455,7 @@ start_scan:
             {
                 PhShellExecuteUserString(
                     Context->WindowHandle,
-                    L"FileBrowseExecutable",
+                    SETTING_FILE_BROWSE_EXECUTABLE,
                     PhGetString(Target),
                     FALSE,
                     L"Make sure the Explorer executable file is present."
@@ -2583,7 +2588,7 @@ VOID NTAPI EtpObjectManagerOpenSecurity(
     }
 
     PhEditSecurity(
-        !!PhGetIntegerSetting(L"ForceNoParent") ? NULL : context->WindowHandle,
+        !!PhGetIntegerSetting(SETTING_FORCE_NO_PARENT) ? NULL : context->WindowHandle,
         PhGetString(objectContext->FullName),
         PhGetString(objectContext->Object->TypeName),
         EtObjectManagerHandleOpenCallback,
@@ -2761,6 +2766,7 @@ cleanup_exit:
     PhDereferenceObject(objectContext.CurrentPath);
 }
 
+_Function_class_(PH_TYPE_DELETE_PROCEDURE)
 VOID EtpObjectEntryDeleteProcedure(
     _In_ PVOID Object,
     _In_ ULONG Flags
@@ -2981,7 +2987,7 @@ INT_PTR CALLBACK WinObjDlgProc(
                 context->CurrentPath
                 );
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
 
             {
                 PPH_STRING Target = PH_AUTO(PhGetStringSetting(SETTING_NAME_OBJMGR_LAST_PATH));
@@ -3477,7 +3483,7 @@ INT_PTR CALLBACK WinObjDlgProc(
                                     {
                                         PhShellExecuteUserString(
                                             hwndDlg,
-                                            L"FileBrowseExecutable",
+                                            SETTING_FILE_BROWSE_EXECUTABLE,
                                             PhGetString(target),
                                             FALSE,
                                             L"Make sure the Explorer executable file is present."
@@ -3532,7 +3538,9 @@ INT_PTR CALLBACK WinObjDlgProc(
                 point.x = GET_X_LPARAM(lParam);
                 point.y = GET_Y_LPARAM(lParam);
 
-                GetWindowRect(context->TreeViewHandle, &treeWindowRect);
+                if (!PhGetWindowRect(context->TreeViewHandle, &treeWindowRect))
+                    break;
+
                 treeHitTest.pt.x = point.x - treeWindowRect.left;
                 treeHitTest.pt.y = point.y - treeWindowRect.top;
 
@@ -3551,7 +3559,6 @@ INT_PTR CALLBACK WinObjDlgProc(
                     PhInsertEMenuItem(menu, PhCreateEMenuItem(0, IDC_COPYPATH, L"Copy &Full Name\bCtrl+Alt+C", NULL, NULL), ULONG_MAX);
                     PhInsertEMenuItem(menu, PhCreateEMenuSeparator(), ULONG_MAX);
                     PhInsertEMenuItem(menu, PhCreateEMenuItem(0, IDC_COPY, L"&Copy\bCtrl+C", NULL, NULL), ULONG_MAX);
-
                     PhInsertCopyListViewEMenuItem(menu, IDC_COPYOBJECTADDRESS, context->ListViewHandle);
 
                     item = PhShowEMenu(
@@ -3725,6 +3732,7 @@ INT_PTR CALLBACK WinObjDlgProc(
     return FALSE;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS EtShowObjectManagerDialogThread(
     _In_ PVOID Parameter
     )

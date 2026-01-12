@@ -15,7 +15,7 @@
 #include <emenu.h>
 #include <hndlinfo.h>
 #include <kphuser.h>
-
+#include <phsettings.h>
 #include <mainwnd.h>
 #include <procprp.h>
 #include <procprv.h>
@@ -58,8 +58,9 @@ VOID PhInsertHandleObjectPropertiesEMenuItems(
     }
     else if (PhEqualString2(Info->TypeName, L"Process", TRUE))
     {
-        PhInsertEMenuItem(parentItem, PhCreateEMenuItem(0, ID_HANDLE_OBJECTPROPERTIES1, PhaAppendCtrlEnter(L"Process propert&ies", EnableShortcut), NULL, NULL), indexInParent);
-        PhInsertEMenuItem(parentItem, PhCreateEMenuSeparator(), indexInParent + 1);
+        PhInsertEMenuItem(parentItem, PhCreateEMenuItem(0, ID_HANDLE_GOTOOWNINGPROCESS, L"Go to process...", NULL, NULL), indexInParent);
+        PhInsertEMenuItem(parentItem, PhCreateEMenuItem(0, ID_HANDLE_OBJECTPROPERTIES1, PhaAppendCtrlEnter(L"Process propert&ies", EnableShortcut), NULL, NULL), indexInParent + 1);
+        PhInsertEMenuItem(parentItem, PhCreateEMenuSeparator(), indexInParent + 2);
     }
     else if (PhEqualString2(Info->TypeName, L"Section", TRUE))
     {
@@ -68,7 +69,7 @@ VOID PhInsertHandleObjectPropertiesEMenuItems(
     }
     else if (PhEqualString2(Info->TypeName, L"Thread", TRUE))
     {
-        PhInsertEMenuItem(parentItem, PhCreateEMenuItem(0, ID_HANDLE_OBJECTPROPERTIES1, PhaAppendCtrlEnter(L"Go to t&hread", EnableShortcut), NULL, NULL), indexInParent);
+        PhInsertEMenuItem(parentItem, PhCreateEMenuItem(0, ID_HANDLE_OBJECTPROPERTIES1, PhaAppendCtrlEnter(L"Go to t&hread...", EnableShortcut), NULL, NULL), indexInParent);
         PhInsertEMenuItem(parentItem, PhCreateEMenuSeparator(), indexInParent + 1);
     }
 }
@@ -127,7 +128,7 @@ VOID PhShowHandleObjectProperties1(
         {
             PhShellExecuteUserString(
                 hWnd,
-                L"FileBrowseExecutable",
+                SETTING_FILE_BROWSE_EXECUTABLE,
                 Info->BestObjectName->Buffer,
                 FALSE,
                 L"Make sure the Explorer executable file is present."
@@ -283,9 +284,6 @@ VOID PhShowHandleObjectProperties1(
 
                 if (status == STATUS_SECTION_PROTECTION && !readOnly)
                 {
-                    viewSize = PH_MAX_SECTION_EDIT_SIZE;
-                    viewBase = NULL;
-
                     status = PhMapViewOfSection(
                         handle,
                         NtCurrentProcess(),
@@ -323,15 +321,14 @@ VOID PhShowHandleObjectProperties1(
                     PhShowStatus(hWnd, L"Unable to map a view of the section.", status, 0);
                 }
             }
+            else
+            {
+                PhShowStatus(hWnd, L"Unable to query the section.", status, 0);
+            }
 
             PhClearReference(&sectionName);
 
             NtClose(handle);
-        }
-
-        if (!NT_SUCCESS(status))
-        {
-            PhShowStatus(hWnd, L"Unable to query the section.", status, 0);
         }
     }
     else if (PhEqualString2(Info->TypeName, L"Thread", TRUE))

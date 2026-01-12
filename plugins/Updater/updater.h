@@ -39,13 +39,14 @@
 #define PH_SHOWINSTALL (WM_APP + 505)
 #define PH_SHOWERROR   (WM_APP + 506)
 
-#define PLUGIN_NAME L"ProcessHacker.UpdateChecker"
+#define PLUGIN_NAME L"UpdateChecker"
 #define SETTING_NAME_AUTO_CHECK (PLUGIN_NAME L".PromptStart")
 #define SETTING_NAME_LAST_CHECK (PLUGIN_NAME L".UpdateCheck")
 #define SETTING_NAME_UPDATE_MODE (PLUGIN_NAME L".UpdateMode")
 #define SETTING_NAME_UPDATE_AVAILABLE (PLUGIN_NAME L".UpdateAvailable")
 #define SETTING_NAME_UPDATE_DATA (PLUGIN_NAME L".UpdateData")
 #define SETTING_NAME_AUTO_CHECK_PAGE (PLUGIN_NAME L".AutoCheckPage")
+#define SETTING_NAME_SHOW_NOTIFICATION (PLUGIN_NAME L".ShowNotification")
 #define SETTING_NAME_CHANGELOG_WINDOW_POSITION (PLUGIN_NAME L".ChangelogWindowPosition")
 #define SETTING_NAME_CHANGELOG_WINDOW_SIZE (PLUGIN_NAME L".ChangelogWindowSize")
 #define SETTING_NAME_CHANGELOG_COLUMNS (PLUGIN_NAME L".ChangelogListColumns")
@@ -197,11 +198,11 @@ VOID StartInitialCheck(
     );
 
 VOID ShowStartupUpdateDialog(
-    VOID
+    _In_ PPH_STRING CacheSttring
     );
 
 ULONG64 ParseVersionString(
-    _Inout_ PPH_STRING VersionString
+    _In_ PPH_STRING VersionString
     );
 
 // options.c
@@ -255,7 +256,7 @@ NTSTATUS UpdaterInitializeHash(
     _In_ PH_RELEASE_CHANNEL Channel
     );
 
-NTSTATUS UpdaterUpdateHash(
+NTSTATUS UpdaterHashData(
     _In_ PUPDATER_HASH_CONTEXT Context,
     _In_reads_bytes_(Length) PVOID Buffer,
     _In_ ULONG Length

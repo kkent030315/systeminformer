@@ -1,81 +1,141 @@
-name: continuous-integration
+name: 'continuous-integration'
 
 on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
-
   workflow_dispatch:
-
-permissions:
-  contents: read
+  push:
+    branches: ['master']
+  pull_request:
+    branches: ['master']
 
 jobs:
   build:
+    permissions:
+      contents: read
     strategy:
+      fail-fast: false
       matrix:
         os: ['windows-latest']
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
-    - name: Install Nuget Packages
+    - name: Checkout repository
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # 6.0.1
+
+    - name: NuGet Cache
+      uses: actions/cache@a7833574556fa59680c1b7cb190c1735db73ebf0 # 5.0.0
+      with:
+        path: packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.config') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Nuget Restore
+      shell: cmd
+      working-directory: ${{github.workspace}}
       run: nuget restore .\packages.config -PackagesDirectory .\packages\
-    - name: Build Init
+
+    - name: Build Tools
       shell: cmd
       working-directory: ${{github.workspace}}
       run: build\build_init.cmd
+
     - name: Build Solution
       shell: cmd
       working-directory: ${{github.workspace}}
       run: build\build_debug.cmd
+
   build-release:
+    permissions:
+      contents: read
     strategy:
       matrix:
         os: ['windows-latest']
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
-    - name: Install Nuget Packages
+    - name: Checkout repository
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # 6.0.1
+
+    - name: NuGet Cache
+      uses: actions/cache@a7833574556fa59680c1b7cb190c1735db73ebf0 # 5.0.0
+      with:
+        path: packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.config') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Nuget Restore
+      shell: cmd
+      working-directory: ${{github.workspace}}
       run: nuget restore .\packages.config -PackagesDirectory .\packages\
-    - name: Build Init
+
+    - name: Build Tools
       shell: cmd
       working-directory: ${{github.workspace}}
       run: build\build_init.cmd
+
     - name: Build Solution
       shell: cmd
       working-directory: ${{github.workspace}}
       run: build\build_release.cmd
+
   build-driver:
+    permissions:
+      contents: read
     strategy:
       matrix:
         os: ['windows-latest']
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
-    - name: Install Nuget Packages
+    - name: Checkout repository
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # 6.0.1
+
+    - name: NuGet Cache
+      uses: actions/cache@a7833574556fa59680c1b7cb190c1735db73ebf0 # 5.0.0
+      with:
+        path: packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.config') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Nuget Restore
+      shell: cmd
+      working-directory: ${{github.workspace}}
       run: nuget restore .\packages.config -PackagesDirectory .\packages\
+
     - name: Build Tools
       shell: cmd
       working-directory: ${{github.workspace}}
       run: build\build_tools.cmd
+
     - name: Build Driver
       shell: cmd
       working-directory: ${{github.workspace}}
       run: build\build_zdriver.cmd prefast
+
   build-driver-release:
+    permissions:
+      contents: read
     strategy:
       matrix:
         os: ['windows-latest']
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
-    - name: Install Nuget Packages
+    - name: Checkout repository
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # 6.0.1
+
+    - name: NuGet Cache
+      uses: actions/cache@a7833574556fa59680c1b7cb190c1735db73ebf0 # 5.0.0
+      with:
+        path: packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.config') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Nuget Restore
+      shell: cmd
+      working-directory: ${{github.workspace}}
       run: nuget restore .\packages.config -PackagesDirectory .\packages\
+
     - name: Build Tools
       shell: cmd
       working-directory: ${{github.workspace}}
       run: build\build_tools.cmd
+
     - name: Build Driver
       shell: cmd
       working-directory: ${{github.workspace}}

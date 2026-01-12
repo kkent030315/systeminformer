@@ -186,7 +186,7 @@ VOID PhpHandleObjectLoadSettingsTreeList(
 {
     PPH_STRING settings;
 
-    settings = PhGetStringSetting(L"FindObjTreeListColumns");
+    settings = PhGetStringSetting(SETTING_FIND_OBJ_TREE_LIST_COLUMNS);
     PhCmLoadSettings(Context->TreeNewHandle, &settings->sr);
     PhDereferenceObject(settings);
 }
@@ -198,7 +198,7 @@ VOID PhpHandleObjectSaveSettingsTreeList(
     PPH_STRING settings;
 
     settings = PhCmSaveSettings(Context->TreeNewHandle);
-    PhSetStringSetting2(L"FindObjTreeListColumns", &settings->sr);
+    PhSetStringSetting2(SETTING_FIND_OBJ_TREE_LIST_COLUMNS, &settings->sr);
     PhDereferenceObject(settings);
 }
 
@@ -643,6 +643,50 @@ static int __cdecl PhpStringObjectTypeCompare(
     return PhCompareString(entry1, entry2, TRUE);
 }
 
+VOID PhpUpdateDropdownThemeMetrics(
+    _In_ PPH_HANDLE_SEARCH_CONTEXT Context,
+    _In_ LONG WindowDpi
+    )
+{
+    LONG maxLength;
+    HDC comboDc;
+    HFONT oldFont;
+    INT count;
+
+    maxLength = 0;
+    comboDc = GetDC(Context->TypeWindowHandle);
+    oldFont = SelectFont(comboDc, Context->TypeWindowFont);
+
+    count = ComboBox_GetCount(Context->TypeWindowHandle);
+
+    for (INT i = 0; i < count; i++)
+    {
+        PPH_STRING entry = PhGetComboBoxString(Context->TypeWindowHandle, i);
+        SIZE textSize;
+
+        if (GetTextExtentPoint32(comboDc, entry->Buffer, (ULONG)entry->Length / sizeof(WCHAR), &textSize))
+        {
+            if (textSize.cx > maxLength)
+                maxLength = textSize.cx;
+        }
+
+        PhDereferenceObject(entry);
+    }
+
+    if (oldFont)
+        SelectFont(comboDc, oldFont);
+
+    ReleaseDC(Context->TypeWindowHandle, comboDc);
+
+    // Add some padding for the vertical scroll bar and margins.
+    maxLength += PhGetSystemMetrics(SM_CXVSCROLL, WindowDpi) * 2;
+
+    if (maxLength)
+    {
+        SendMessage(Context->TypeWindowHandle, CB_SETDROPPEDWIDTH, maxLength, 0);
+    }
+}
+
 VOID PhpPopulateObjectTypes(
     _In_ PPH_HANDLE_SEARCH_CONTEXT Context
     )
@@ -678,9 +722,11 @@ VOID PhpPopulateObjectTypes(
     {
         LONG maxLength;
         HDC comboDc;
+        HFONT oldFont;
 
         maxLength = 0;
         comboDc = GetDC(Context->TypeWindowHandle);
+        oldFont = SelectFont(comboDc, Context->TypeWindowFont);
 
         SetWindowFont(Context->TypeWindowHandle, Context->TypeWindowFont, TRUE);
 
@@ -698,6 +744,9 @@ VOID PhpPopulateObjectTypes(
             ComboBox_AddString(Context->TypeWindowHandle, PhGetString(objectTypeList->Items[i]));
             PhDereferenceObject(objectTypeList->Items[i]);
         }
+
+        if (oldFont)
+            SelectFont(comboDc, oldFont);
 
         ReleaseDC(Context->TypeWindowHandle, comboDc);
 
@@ -909,6 +958,7 @@ typedef struct _SEARCH_MODULE_CONTEXT
     HANDLE ProcessId;
 } SEARCH_MODULE_CONTEXT, *PSEARCH_MODULE_CONTEXT;
 
+_Function_class_(PH_ENUM_GENERIC_MODULES_CALLBACK)
 static BOOLEAN NTAPI EnumModulesCallback(
     _In_ PPH_MODULE_INFO Module,
     _In_ PSEARCH_MODULE_CONTEXT Context
@@ -965,6 +1015,7 @@ static BOOLEAN NTAPI EnumModulesCallback(
     return TRUE;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS PhpFindObjectsThreadStart(
     _In_ PVOID Parameter
     )
@@ -1169,6 +1220,7 @@ PPH_HANDLE_SEARCH_CONTEXT PhCreateFindObjectContext(
     return context;
 }
 
+_Function_class_(PH_SEARCHCONTROL_CALLBACK)
 VOID NTAPI PhFindObjectsSearchControlCallback(
     _In_ ULONG_PTR MatchHandle,
     _In_opt_ PVOID Context
@@ -1239,8 +1291,8 @@ INT_PTR CALLBACK PhFindObjectsDlgProc(
             context->MinimumSize.bottom = 100;
             MapDialogRect(hwndDlg, &context->MinimumSize);
 
-            if (PhValidWindowPlacementFromSetting(L"FindObjWindowPosition"))
-                PhLoadWindowPlacementFromSetting(L"FindObjWindowPosition", L"FindObjWindowSize", hwndDlg);
+            if (PhValidWindowPlacementFromSetting(SETTING_FIND_OBJ_WINDOW_POSITION))
+                PhLoadWindowPlacementFromSetting(SETTING_FIND_OBJ_WINDOW_POSITION, SETTING_FIND_OBJ_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, (HWND)lParam);
 
@@ -1271,7 +1323,7 @@ INT_PTR CALLBACK PhFindObjectsDlgProc(
                 context->SearchThreadHandle = NULL;
             }
 
-            PhSaveWindowPlacementToSetting(L"FindObjWindowPosition", L"FindObjWindowSize", hwndDlg);
+            PhSaveWindowPlacementToSetting(SETTING_FIND_OBJ_WINDOW_POSITION, SETTING_FIND_OBJ_WINDOW_SIZE, hwndDlg);
 
             PhUnregisterWindowCallback(hwndDlg);
 
@@ -1389,6 +1441,7 @@ INT_PTR CALLBACK PhFindObjectsDlgProc(
                         PhInsertEMenuItem(menu, PhCreateEMenuItem(0, ID_OBJECT_CLOSE, L"C&lose\bDel", NULL, NULL), ULONG_MAX);
                         PhInsertEMenuItem(menu, PhCreateEMenuSeparator(), ULONG_MAX);
                         PhInsertEMenuItem(menu, PhCreateEMenuItem(0, ID_OBJECT_GOTOOWNINGPROCESS, L"Go to &process...", NULL, NULL), ULONG_MAX);
+                        PhInsertEMenuItem(menu, PhCreateEMenuSeparator(), ULONG_MAX);
                         PhInsertEMenuItem(menu, PhCreateEMenuItem(0, ID_OBJECT_PROPERTIES, L"Prope&rties", NULL, NULL), ULONG_MAX);
                         PhInsertEMenuItem(menu, PhCreateEMenuSeparator(), ULONG_MAX);
                         PhInsertEMenuItem(menu, PhCreateEMenuItem(0, ID_OBJECT_COPY, L"&Copy\bCtrl+C", NULL, NULL), ULONG_MAX);
@@ -1641,6 +1694,14 @@ INT_PTR CALLBACK PhFindObjectsDlgProc(
                 }
                 break;
             }
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&context->LayoutManager);
+
+            PhpUpdateDropdownThemeMetrics(context, LOWORD(wParam));
         }
         break;
     case WM_SIZE:

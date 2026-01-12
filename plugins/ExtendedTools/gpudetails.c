@@ -397,12 +397,12 @@ INT_PTR CALLBACK EtpGpuDetailsDlgProc(
             PhAddLayoutItem(&context->LayoutManager, context->ListViewHandle, NULL, PH_ANCHOR_ALL);
 
             // Note: This dialog must be centered after all other graphs and controls have been added.
-            if (PhGetIntegerPairSetting(SETTING_NAME_GPU_DETAILS_WINDOW_POSITION).X != 0)
+            if (PhValidWindowPlacementFromSetting(SETTING_NAME_GPU_DETAILS_WINDOW_POSITION))
                 PhLoadWindowPlacementFromSetting(SETTING_NAME_GPU_DETAILS_WINDOW_POSITION, SETTING_NAME_GPU_DETAILS_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, (HWND)lParam);
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
 
             EtpGpuDetailsEnumAdapters(context->ListViewHandle);
 
@@ -416,6 +416,8 @@ INT_PTR CALLBACK EtpGpuDetailsDlgProc(
         break;
     case WM_DESTROY:
         {
+            PhRemoveWindowContext(hwndDlg, PH_WINDOW_CONTEXT_DEFAULT);
+
             PhUnregisterCallback(PhGetGeneralCallback(GeneralCallbackProcessProviderUpdatedEvent), &context->ProcessesUpdatedCallbackRegistration);
 
             PhSaveWindowPlacementToSetting(SETTING_NAME_GPU_DETAILS_WINDOW_POSITION, SETTING_NAME_GPU_DETAILS_WINDOW_SIZE, hwndDlg);
@@ -423,11 +425,7 @@ INT_PTR CALLBACK EtpGpuDetailsDlgProc(
             PhDeleteLayoutManager(&context->LayoutManager);
 
             PostQuitMessage(0);
-        }
-        break;
-    case WM_NCDESTROY:
-        {
-            PhRemoveWindowContext(hwndDlg, PH_WINDOW_CONTEXT_DEFAULT);
+
             PhFree(context);
         }
         break;
@@ -444,6 +442,12 @@ INT_PTR CALLBACK EtpGpuDetailsDlgProc(
         break;
     case WM_SIZE:
         {
+            PhLayoutManagerLayout(&context->LayoutManager);
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
             PhLayoutManagerLayout(&context->LayoutManager);
         }
         break;
@@ -541,7 +545,7 @@ NTSTATUS EtGpuDetailsDialogThreadStart(
     EtGpuDetailsDialogHandle = PhCreateDialog(
         NtCurrentImageBase(),
         MAKEINTRESOURCE(IDD_SYSINFO_GPUDETAILS),
-        !!PhGetIntegerSetting(L"ForceNoParent") ? NULL : Parameter,
+        !!PhGetIntegerSetting(SETTING_FORCE_NO_PARENT) ? NULL : Parameter,
         EtpGpuDetailsDlgProc,
         NULL
         );

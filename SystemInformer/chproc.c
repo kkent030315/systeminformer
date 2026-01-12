@@ -127,7 +127,7 @@ static VOID PhpRefreshProcessList(
         }
 
         if (process->UniqueProcessId == SYSTEM_PROCESS_ID)
-            fileName = PhGetKernelFileName2();
+            fileName = PhGetKernelFileName();
         else if (PH_IS_REAL_PROCESS_ID(process->UniqueProcessId))
             PhGetProcessImageFileNameByProcessId(process->UniqueProcessId, &fileName);
 
@@ -280,6 +280,9 @@ INT_PTR CALLBACK PhpChooseProcessDlgProc(
         break;
     case WM_DPICHANGED:
         {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&context->LayoutManager);
+
             PhpChooseProcessSetImagelist(context);
 
             PhpRefreshProcessList(hwndDlg, context);

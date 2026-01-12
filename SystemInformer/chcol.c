@@ -72,10 +72,10 @@ VOID PhShowChooseColumnsDialog(
     PhDereferenceObject(context.Columns);
 }
 
-static long __cdecl PhpColumnsCompareDisplayIndexTn(
-    _In_ const void* Context,
-    _In_ const void *elem1,
-    _In_ const void *elem2
+static int __cdecl PhpColumnsCompareDisplayIndexTn(
+    _In_ void* Context,
+    _In_ void const* elem1,
+    _In_ void const* elem2
     )
 {
     PPH_TREENEW_COLUMN column1 = *(PPH_TREENEW_COLUMN *)elem1;
@@ -153,6 +153,7 @@ VOID PhpColumnsResetListBox(
     SendMessage(ListBoxHandle, WM_SETREDRAW, TRUE, 0);
 }
 
+_Function_class_(PH_SEARCHCONTROL_CALLBACK)
 VOID NTAPI PhpInactiveColumnsSearchControlCallback(
     _In_ ULONG_PTR MatchHandle,
     _In_opt_ PVOID Context
@@ -168,6 +169,7 @@ VOID NTAPI PhpInactiveColumnsSearchControlCallback(
         );
 }
 
+_Function_class_(PH_SEARCHCONTROL_CALLBACK)
 VOID NTAPI PhpActiveColumnsSearchControlCallback(
     _In_ ULONG_PTR MatchHandle,
     _In_opt_ PVOID Context

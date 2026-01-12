@@ -50,9 +50,19 @@ PhGetProcessPriorityClassString(
     );
 // end_phapppub
 
+PPH_STRING PhGetProcessProtectionString(
+    _In_ PS_PROTECTION Protection,
+    _In_ BOOLEAN IsSecureProcess
+    );
+
 NTSTATUS PhGetProcessSwitchContext(
     _In_ HANDLE ProcessHandle,
     _Out_ PGUID Guid
+    );
+
+NTSTATUS PhGetProcessDefaultHeap(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PVOID* Heap
     );
 
 // begin_phapppub
@@ -383,10 +393,12 @@ typedef struct _PH_TN_FILTER_SUPPORT
     PPH_LIST NodeList;
 } PH_TN_FILTER_SUPPORT, *PPH_TN_FILTER_SUPPORT;
 
-typedef BOOLEAN (NTAPI *PPH_TN_FILTER_FUNCTION)(
+typedef _Function_class_(PH_TN_FILTER_FUNCTION)
+BOOLEAN NTAPI PH_TN_FILTER_FUNCTION(
     _In_ PPH_TREENEW_NODE Node,
     _In_opt_ PVOID Context
     );
+typedef PH_TN_FILTER_FUNCTION* PPH_TN_FILTER_FUNCTION;
 
 typedef struct _PH_TN_FILTER_ENTRY
 {

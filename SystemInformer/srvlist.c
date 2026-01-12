@@ -28,11 +28,13 @@
 #include <procprv.h>
 #include <srvprv.h>
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PhpServiceNodeHashtableEqualFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
     );
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PhpServiceNodeHashtableHashFunction(
     _In_ PVOID Entry
     );
@@ -42,6 +44,7 @@ VOID PhpRemoveServiceNode(
     _In_opt_ PVOID Context
     );
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpServiceTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,
@@ -64,7 +67,6 @@ static PH_CM_MANAGER ServiceTreeListCm;
 
 static PPH_HASHTABLE ServiceNodeHashtable; // hashtable of all nodes
 static PPH_LIST ServiceNodeList; // list of all nodes
-
 static PH_TN_FILTER_SUPPORT FilterSupport;
 
 BOOLEAN PhServiceTreeListStateHighlighting = TRUE;
@@ -83,6 +85,7 @@ VOID PhServiceTreeListInitialization(
     ServiceNodeList = PhCreateList(100);
 }
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PhpServiceNodeHashtableEqualFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
@@ -94,6 +97,7 @@ BOOLEAN PhpServiceNodeHashtableEqualFunction(
     return serviceNode1->ServiceItem == serviceNode2->ServiceItem;
 }
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PhpServiceNodeHashtableHashFunction(
     _In_ PVOID Entry
     )
@@ -154,13 +158,13 @@ VOID PhLoadSettingsServiceTreeList(
     PPH_STRING settings;
     PPH_STRING sortSettings;
 
-    settings = PhGetStringSetting(L"ServiceTreeListColumns");
-    sortSettings = PhGetStringSetting(L"ServiceTreeListSort");
+    settings = PhGetStringSetting(SETTING_SERVICE_TREE_LIST_COLUMNS);
+    sortSettings = PhGetStringSetting(SETTING_SERVICE_TREE_LIST_SORT);
     PhCmLoadSettingsEx(ServiceTreeListHandle, &ServiceTreeListCm, 0, &settings->sr, &sortSettings->sr);
     PhDereferenceObject(settings);
     PhDereferenceObject(sortSettings);
 
-    if (PhGetIntegerSetting(L"EnableInstantTooltips"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_INSTANT_TOOLTIPS))
         SendMessage(TreeNew_GetTooltips(ServiceTreeListHandle), TTM_SETDELAYTIME, TTDT_INITIAL, 0);
     else
         SendMessage(TreeNew_GetTooltips(ServiceTreeListHandle), TTM_SETDELAYTIME, TTDT_AUTOPOP, MAXSHORT);
@@ -174,8 +178,8 @@ VOID PhSaveSettingsServiceTreeList(
     PPH_STRING sortSettings;
 
     settings = PhCmSaveSettingsEx(ServiceTreeListHandle, &ServiceTreeListCm, 0, &sortSettings);
-    PhSetStringSetting2(L"ServiceTreeListColumns", &settings->sr);
-    PhSetStringSetting2(L"ServiceTreeListSort", &sortSettings->sr);
+    PhSetStringSetting2(SETTING_SERVICE_TREE_LIST_COLUMNS, &settings->sr);
+    PhSetStringSetting2(SETTING_SERVICE_TREE_LIST_SORT, &sortSettings->sr);
     PhDereferenceObject(settings);
     PhDereferenceObject(sortSettings);
 }
@@ -363,36 +367,10 @@ static VOID PhpUpdateServiceNodeDescription(
 {
     if (!FlagOn(ServiceNode->ValidMask, PHSN_DESCRIPTION))
     {
-        NTSTATUS status;
-        HANDLE keyHandle;
-
-        status = PhOpenServiceKey(
-            &keyHandle,
-            KEY_QUERY_VALUE,
-            &ServiceNode->ServiceItem->Name->sr
+        PhSwapReference(
+            &ServiceNode->Description,
+            PhGetServiceDescriptionKey(&ServiceNode->ServiceItem->Name->sr)
             );
-
-        if (NT_SUCCESS(status))
-        {
-            PPH_STRING descriptionString;
-            PPH_STRING serviceDescriptionString;
-
-            if (descriptionString = PhQueryRegistryStringZ(keyHandle, L"Description"))
-            {
-                if (serviceDescriptionString = PhLoadIndirectString(&descriptionString->sr))
-                    PhMoveReference(&ServiceNode->Description, serviceDescriptionString);
-                else
-                    PhSwapReference(&ServiceNode->Description, descriptionString);
-
-                PhDereferenceObject(descriptionString);
-            }
-
-            NtClose(keyHandle);
-        }
-        else
-        {
-            PhMoveReference(&ServiceNode->Description, PhGetStatusMessage(status, 0));
-        }
 
         SetFlag(ServiceNode->ValidMask, PHSN_DESCRIPTION);
     }
@@ -458,6 +436,7 @@ static VOID PhpUpdateServiceNodeKey(
     return PhModifySort(sortResult, ServiceTreeListSortOrder); \
 }
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpServiceTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,
@@ -932,7 +911,7 @@ BOOLEAN NTAPI PhpServiceTreeNewCallback(
 
                     PhCustomDrawTreeTimeLine(
                         customDraw->Dc,
-                        customDraw->CellRect,
+                        &customDraw->CellRect,
                         PhEnableThemeSupport ? PH_DRAW_TIMELINE_DARKTHEME : 0,
                         NULL,
                         &node->KeyLastWriteTime
@@ -1061,16 +1040,27 @@ VOID PhDeselectAllServiceNodes(
     TreeNew_DeselectRange(ServiceTreeListHandle, 0, -1);
 }
 
-VOID PhSelectAndEnsureVisibleServiceNode(
+BOOLEAN PhSelectAndEnsureVisibleServiceNode(
     _In_ PPH_SERVICE_NODE ServiceNode
     )
 {
     PhDeselectAllServiceNodes();
 
-    if (!ServiceNode->Node.Visible)
-        return;
-
-    TreeNew_FocusMarkSelectNode(ServiceTreeListHandle, &ServiceNode->Node);
+    if (ServiceNode->Node.Visible)
+    {
+        TreeNew_FocusMarkSelectNode(ServiceTreeListHandle, &ServiceNode->Node);
+        return TRUE;
+    }
+    else
+    {
+        PhShowInformation2(
+            PhMainWndHandle,
+            L"Unable to perform the operation.",
+            L"%s",
+            L"This node cannot be displayed because it is currently hidden by your active filter settings or preferences."
+            );
+        return FALSE;
+    }
 }
 
 VOID PhCopyServiceList(

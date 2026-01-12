@@ -283,8 +283,8 @@ VOID NetworkDeviceLayoutGraphs(
     margin = Context->GraphMargin;
     PhGetSizeDpiValue(&margin, Context->SysinfoSection->Parameters->WindowDpi, TRUE);
 
-    GetClientRect(Context->WindowHandle, &clientRect);
-    GetClientRect(Context->LabelSendHandle, &labelRect);
+    PhGetClientRect(Context->WindowHandle, &clientRect);
+    PhGetClientRect(Context->LabelSendHandle, &labelRect);
     graphWidth = clientRect.right - margin.left - margin.right;
     graphHeight = (clientRect.bottom - margin.top - margin.bottom - labelRect.bottom * 2 - Context->GraphPadding * 3) / 2;
 
@@ -355,7 +355,7 @@ VOID NetworkDeviceNotifyProcessorGraph(
             PPH_GRAPH_DRAW_INFO drawInfo = getDrawInfo->DrawInfo;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y;
-            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoWrite"), 0, Context->SysinfoSection->Parameters->WindowDpi);
+            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_WRITE), 0, Context->SysinfoSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &Context->GraphSendState,
@@ -441,7 +441,7 @@ VOID NetworkDeviceNotifyPackageGraph(
             PPH_GRAPH_DRAW_INFO drawInfo = getDrawInfo->DrawInfo;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y;
-            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoReadOther"), 0, Context->SysinfoSection->Parameters->WindowDpi);
+            Context->SysinfoSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_READ_OTHER), 0, Context->SysinfoSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &Context->GraphReceiveState,
@@ -549,6 +549,7 @@ VOID NetworkDeviceUpdateAdapterNameText(
     NetworkDeviceUpdateDeviceInfo(NULL, AdapterEntry);
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS NetworkDeviceQueryNameWorkQueueItem(
     _In_ PDV_NETADAPTER_ENTRY AdapterEntry
     )
@@ -560,7 +561,7 @@ NTSTATUS NetworkDeviceQueryNameWorkQueueItem(
     PhDelayExecution(4000);
 #endif
 
-    InterlockedExchange(&AdapterEntry->JustProcessed, TRUE);
+    InterlockedExchange((volatile LONG*)&AdapterEntry->JustProcessed, TRUE);
     AdapterEntry->PendingQuery = FALSE;
 
     PhDereferenceObject(AdapterEntry);
@@ -624,7 +625,7 @@ INT_PTR CALLBACK NetworkDeviceDialogProc(
 
             context->PanelWindowHandle = PhCreateDialog(PluginInstance->DllBase, MAKEINTRESOURCE(IDD_NETADAPTER_PANEL), hwndDlg, NetworkDevicePanelDialogProc, context);
             ShowWindow(context->PanelWindowHandle, SW_SHOW);
-            PhAddLayoutItemEx(&context->LayoutManager, context->PanelWindowHandle, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, panelItem->Margin);
+            PhAddLayoutItemEx(&context->LayoutManager, context->PanelWindowHandle, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, &panelItem->Margin);
 
             NetworkDeviceInitializeDialogDpi(context);
             NetworkDeviceUpdateTitle(context);
@@ -667,6 +668,7 @@ INT_PTR CALLBACK NetworkDeviceDialogProc(
                 SetWindowFont(context->AdapterNameLabel, context->SysinfoSection->Parameters->MediumFont, FALSE);
             }
 
+            PhLayoutManagerUpdate(&context->LayoutManager, context->SysinfoSection->Parameters->WindowDpi);
             PhLayoutManagerLayout(&context->LayoutManager);
             NetworkDeviceLayoutGraphs(context);
         }
@@ -702,6 +704,7 @@ INT_PTR CALLBACK NetworkDeviceDialogProc(
     return FALSE;
 }
 
+_Function_class_(PH_SYSINFO_SECTION_CALLBACK)
 BOOLEAN NetworkDeviceSectionCallback(
     _In_ PPH_SYSINFO_SECTION Section,
     _In_ PH_SYSINFO_SECTION_MESSAGE Message,
@@ -731,7 +734,7 @@ BOOLEAN NetworkDeviceSectionCallback(
                 if (context->AdapterEntry->JustProcessed)
                 {
                     NetworkDeviceUpdateTitle(context);
-                    InterlockedExchange(&context->AdapterEntry->JustProcessed, FALSE);
+                    InterlockedExchange((volatile LONG*)&context->AdapterEntry->JustProcessed, FALSE);
                 }
 
                 NetworkDeviceTickDialog(context);
@@ -776,7 +779,7 @@ BOOLEAN NetworkDeviceSectionCallback(
             PPH_GRAPH_DRAW_INFO drawInfo = (PPH_GRAPH_DRAW_INFO)Parameter1;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y | PH_GRAPH_USE_LINE_2;
-            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoReadOther"), PhGetIntegerSetting(L"ColorIoWrite"), Section->Parameters->WindowDpi);
+            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_READ_OTHER), PhGetIntegerSetting(SETTING_COLOR_IO_WRITE), Section->Parameters->WindowDpi);
             PhGetDrawInfoGraphBuffers(&Section->GraphState.Buffers, drawInfo, context->AdapterEntry->InboundBuffer.Count);
 
             if (!Section->GraphState.Valid)

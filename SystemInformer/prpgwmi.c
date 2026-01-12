@@ -97,7 +97,7 @@ PPHP_PROCESS_WMI_TREENODE PhpAddWmiProviderNode(
 
 PPHP_PROCESS_WMI_TREENODE PhpFindWmiProviderNode(
     _In_ PPH_PROCESS_WMI_CONTEXT Context,
-    _In_ PWSTR RelativePath
+    _In_ PPH_STRING RelativePath
     );
 
 VOID PhpClearWmiProviderTree(
@@ -591,7 +591,6 @@ PPH_STRING PhpQueryWmiProviderStatistics(
     HRESULT status;
     PPH_STRING wbemProviderString = NULL;
     BSTR wbemResourceString = NULL;
-    BSTR wbemQueryString = NULL;
     IWbemLocator* wbemLocator = NULL;
     IWbemServices* wbemServices = NULL;
     IEnumWbemClassObject* wbemEnumerator = NULL;
@@ -843,8 +842,6 @@ PPH_STRING PhpQueryWmiProviderStatistics(
     }
 
 CleanupExit:
-    if (wbemQueryString)
-        SysFreeString(wbemQueryString);
     if (wbemResourceString)
         SysFreeString(wbemResourceString);
     if (wbemEnumerator)
@@ -1040,7 +1037,7 @@ VOID PhpShowWmiProviderNodeContextMenu(
 
     menu = PhCreateEMenu();
 
-    if (PhGetIntegerSetting(L"WmiProviderEnableHiddenMenu"))
+    if (PhGetIntegerSetting(SETTING_WMI_PROVIDER_ENABLE_HIDDEN_MENU))
     {
         PhInsertEMenuItem(menu, PhCreateEMenuItem(0, 1, L"&Suspend", NULL, NULL), ULONG_MAX);
         PhInsertEMenuItem(menu, PhCreateEMenuItem(0, 2, L"Res&ume", NULL, NULL), ULONG_MAX);
@@ -1114,7 +1111,7 @@ VOID PhpShowWmiProviderNodeContextMenu(
                     {
                         PhShellExecuteUserString(
                             Context->WindowHandle,
-                            L"ProgramInspectExecutables",
+                            SETTING_PROGRAM_INSPECT_EXECUTABLES,
                             PhGetString(nodes[0]->Provider->FileName),
                             FALSE,
                             L"Make sure the PE Viewer executable file is present."
@@ -1139,7 +1136,7 @@ VOID PhpShowWmiProviderNodeContextMenu(
                     {
                         PhShellExecuteUserString(
                             Context->WindowHandle,
-                            L"FileBrowseExecutable",
+                            SETTING_FILE_BROWSE_EXECUTABLE,
                             PhGetString(nodes[0]->Provider->FileName),
                             FALSE,
                             L"Make sure the Explorer executable file is present."
@@ -1170,9 +1167,9 @@ VOID PhLoadSettingsWmiProviderList(
     PPH_STRING settings;
     PPH_STRING sortSettings;
 
-    settings = PhGetStringSetting(L"WmiProviderTreeListColumns");
-    sortSettings = PhGetStringSetting(L"WmiProviderTreeListSort");
-    Context->Flags = PhGetIntegerSetting(L"WmiProviderTreeListFlags");
+    settings = PhGetStringSetting(SETTING_WMI_PROVIDER_TREE_LIST_COLUMNS);
+    sortSettings = PhGetStringSetting(SETTING_WMI_PROVIDER_TREE_LIST_SORT);
+    Context->Flags = PhGetIntegerSetting(SETTING_WMI_PROVIDER_TREE_LIST_FLAGS);
 
     PhCmLoadSettingsEx(Context->TreeNewHandle, &Context->Cm, 0, &settings->sr, &sortSettings->sr);
 
@@ -1189,9 +1186,9 @@ VOID PhSaveSettingsWmiProviderList(
 
     settings = PhCmSaveSettingsEx(Context->TreeNewHandle, &Context->Cm, 0, &sortSettings);
 
-    PhSetIntegerSetting(L"WmiProviderTreeListFlags", Context->Flags);
-    PhSetStringSetting2(L"WmiProviderTreeListColumns", &settings->sr);
-    PhSetStringSetting2(L"WmiProviderTreeListSort", &sortSettings->sr);
+    PhSetIntegerSetting(SETTING_WMI_PROVIDER_TREE_LIST_FLAGS, Context->Flags);
+    PhSetStringSetting2(SETTING_WMI_PROVIDER_TREE_LIST_COLUMNS, &settings->sr);
+    PhSetStringSetting2(SETTING_WMI_PROVIDER_TREE_LIST_SORT, &sortSettings->sr);
 
     PhDereferenceObject(settings);
     PhDereferenceObject(sortSettings);
@@ -1213,6 +1210,7 @@ VOID PhSetOptionsWmiProviderList(
     }
 }
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PhpWmiProviderNodeHashtableEqualFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
@@ -1224,6 +1222,7 @@ BOOLEAN PhpWmiProviderNodeHashtableEqualFunction(
     return PhEqualStringRef(&node1->Provider->RelativePath->sr, &node2->Provider->RelativePath->sr, TRUE);
 }
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PhpWmiProviderNodeHashtableHashFunction(
     _In_ PVOID Entry
     )
@@ -1280,14 +1279,14 @@ PPHP_PROCESS_WMI_TREENODE PhpAddWmiProviderNode(
 
 PPHP_PROCESS_WMI_TREENODE PhpFindWmiProviderNode(
     _In_ PPH_PROCESS_WMI_CONTEXT Context,
-    _In_ PWSTR RelativePath
+    _In_ PPH_STRING RelativePath
     )
 {
     PHP_PROCESS_WMI_TREENODE lookupNode;
     PPHP_PROCESS_WMI_TREENODE lookupNodePtr = &lookupNode;
     PPHP_PROCESS_WMI_TREENODE *node;
 
-    PhInitializeStringRefLongHint(&lookupNode.Provider->RelativePath->sr, RelativePath);
+    lookupNode.Provider->RelativePath = RelativePath;
 
     node = (PPHP_PROCESS_WMI_TREENODE*)PhFindEntryHashtable(
         Context->NodeHashtable,
@@ -1370,6 +1369,7 @@ VOID PhpExpandAllWmiProviderNodes(
     return PhModifySort(sortResult, ((PPH_PROCESS_WMI_CONTEXT)_context)->TreeNewSortOrder); \
 }
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpWmiProviderTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,
@@ -1691,6 +1691,7 @@ VOID PhpDeleteWmiProviderTree(
     PhDereferenceObject(Context->NodeList);
 }
 
+_Function_class_(PH_TN_FILTER_FUNCTION)
 BOOLEAN PhpProcessWmiProviderTreeFilterCallback(
     _In_ PPH_TREENEW_NODE Node,
     _In_opt_ PVOID Context
@@ -1742,10 +1743,11 @@ BOOLEAN PhpProcessWmiProviderTreeFilterCallback(
     return FALSE;
 }
 
+_Function_class_(PH_SEARCHCONTROL_CALLBACK)
 VOID NTAPI PhpProcessWmiProvidersSearchControlCallback(
     _In_ ULONG_PTR MatcHandle,
     _In_opt_ PVOID Context
-)
+    )
 {
     PPH_PROCESS_WMI_CONTEXT context = Context;
 
@@ -1864,7 +1866,8 @@ INT_PTR CALLBACK PhpProcessWmiProvidersDlgProc(
                     PPH_EMENU_ITEM highlightNamespaceMenuItem;
                     PPH_EMENU_ITEM selectedItem;
 
-                    GetWindowRect(GetDlgItem(hwndDlg, IDC_OPTIONS), &rect);
+                    if (!PhGetWindowRect(GetDlgItem(hwndDlg, IDC_OPTIONS), &rect))
+                        break;
 
                     namespaceMenuItem = PhCreateEMenuItem(0, PROCESS_WMI_TREE_MENU_ITEM_HIDE_DEFAULT_NAMESPACE, L"Hide default namespace", NULL, NULL);
                     highlightNamespaceMenuItem = PhCreateEMenuItem(0, PROCESS_WMI_TREE_MENU_ITEM_HIGHLIGHT_DEFAULT_NAMESPACE, L"Highlight default namespace", NULL, NULL);

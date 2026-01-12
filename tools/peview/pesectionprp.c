@@ -135,6 +135,7 @@ BOOLEAN PvSectionNodeHashtableCompareFunction(
     _In_ PVOID Entry2
     );
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PvSectionNodeHashtableHashFunction(
     _In_ PVOID Entry
     );
@@ -265,6 +266,7 @@ PPH_STRING PvGetSectionCharacteristics(
     return PhFinalStringBuilderString(&stringBuilder);
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS PvpPeSectionsEnumerateThread(
     _In_ PPV_SECTION_CONTEXT Context
     )
@@ -327,11 +329,12 @@ NTSTATUS PvpPeSectionsEnumerateThread(
                         imageSectionData,
                         PvMappedImage.Sections[i].SizeOfRawData,
                         &imageSectionEntropy,
+                        NULL,
                         NULL
                         ))
                     {
                         sectionNode->SectionEntropy = imageSectionEntropy;
-                        sectionNode->EntropyString = PhFormatEntropy(imageSectionEntropy, 2, 0, 0);
+                        sectionNode->EntropyString = PhFormatEntropy(imageSectionEntropy, 2, 0, 0, 0, 0);
                     }
                 }
             }
@@ -759,6 +762,7 @@ BOOLEAN PvSectionNodeHashtableCompareFunction(
     return sectionNode1->UniqueId == sectionNode2->UniqueId;
 }
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PvSectionNodeHashtableHashFunction(
     _In_ PVOID Entry
     )

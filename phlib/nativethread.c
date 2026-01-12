@@ -12,16 +12,19 @@
 
 #include <ph.h>
 #include <apiimport.h>
+#include <hndlinfo.h>
 #include <kphuser.h>
 #include <lsasup.h>
 #include <mapldr.h>
+#include <phafd.h>
 
 /**
  * Opens a thread.
  *
- * \param ThreadHandle A variable which receives a handle to the thread.
- * \param DesiredAccess The desired access to the thread.
- * \param ThreadId The ID of the thread.
+ * \param[out] ThreadHandle A variable which receives a handle to the thread.
+ * \param[in] DesiredAccess The desired access to the thread.
+ * \param[in] ThreadId The ID of the thread.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhOpenThread(
     _Out_ PHANDLE ThreadHandle,
@@ -70,6 +73,14 @@ NTSTATUS PhOpenThread(
     return status;
 }
 
+/**
+ * Opens a thread using a CLIENT_ID structure.
+ *
+ * \param[out] ThreadHandle Receives a handle to the opened thread.
+ * \param[in] DesiredAccess The access rights requested for the thread.
+ * \param[in] ClientId Pointer to a CLIENT_ID structure identifying the thread.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhOpenThreadClientId(
     _Out_ PHANDLE ThreadHandle,
     _In_ ACCESS_MASK DesiredAccess,
@@ -113,7 +124,14 @@ NTSTATUS PhOpenThreadClientId(
     return status;
 }
 
-/** Limited API for untrusted/external code. */
+/**
+ * Limited API for untrusted/external code.
+ *
+ * \param[out] ThreadHandle A variable which receives a handle to the thread.
+ * \param[in] DesiredAccess The desired access to the thread.
+ * \param[in] ThreadId The ID of the thread.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhOpenThreadPublic(
     _Out_ PHANDLE ThreadHandle,
     _In_ ACCESS_MASK DesiredAccess,
@@ -136,6 +154,14 @@ NTSTATUS PhOpenThreadPublic(
         );
 }
 
+/**
+ * Opens the process that owns the specified thread.
+ *
+ * \param[in] ThreadHandle Handle to the thread whose owning process is to be opened.
+ * \param[in] DesiredAccess Access rights requested for the process handle.
+ * \param[out] ProcessHandle Receives a handle to the opened process.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhOpenThreadProcess(
     _In_ HANDLE ThreadHandle,
     _In_ ACCESS_MASK DesiredAccess,
@@ -177,6 +203,628 @@ NTSTATUS PhOpenThreadProcess(
     return status;
 }
 
+/**
+ * Gets basic information for a thread.
+ *
+ * \param ThreadHandle A handle to a thread. The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ * \param BasicInformation A variable which receives the information.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetThreadBasicInformation(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PTHREAD_BASIC_INFORMATION BasicInformation
+    )
+{
+    return NtQueryInformationThread(
+        ThreadHandle,
+        ThreadBasicInformation,
+        BasicInformation,
+        sizeof(THREAD_BASIC_INFORMATION),
+        NULL
+        );
+}
+
+/**
+ * Retrieves the base priority of a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread whose base priority is to be retrieved.
+ * \param[out] Increment A pointer to a variable that receives the base priority value (KPRIORITY).
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadBasePriority(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PKPRIORITY Increment
+    )
+{
+    NTSTATUS status;
+    THREAD_BASIC_INFORMATION basicInfo;
+
+    status = PhGetThreadBasicInformation(ThreadHandle, &basicInfo);
+
+    if (NT_SUCCESS(status))
+    {
+        *Increment = basicInfo.BasePriority;
+    }
+
+    return status;
+
+    //return NtQueryInformationThread(
+    //    ThreadHandle,
+    //    ThreadBasePriority,
+    //    Increment,
+    //    sizeof(LONG),
+    //    NULL
+    //    );
+}
+
+/**
+ * Retrieves the Thread Environment Block (TEB) base address for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread whose TEB base address is to be retrieved.
+ * \param[out] TebBaseAddress A pointer to a variable that receives the TEB base address as an ULONG_PTR.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadTeb(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PULONG_PTR TebBaseAddress
+    )
+{
+    NTSTATUS status;
+    THREAD_BASIC_INFORMATION basicInfo;
+
+    status = PhGetThreadBasicInformation(ThreadHandle, &basicInfo);
+
+    if (NT_SUCCESS(status))
+    {
+        if (!basicInfo.TebBaseAddress)
+            return STATUS_UNSUCCESSFUL;
+
+        *TebBaseAddress = (ULONG_PTR)basicInfo.TebBaseAddress;
+    }
+
+    return status;
+}
+
+/**
+ * Retrieves the Thread Environment Block (TEB32) base address for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread whose TEB32 base address is to be retrieved.
+ * \param[out] TebBaseAddress A pointer to a variable that receives the TEB base address as an ULONG_PTR.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadTeb32(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PULONG_PTR TebBaseAddress
+    )
+{
+    NTSTATUS status;
+    THREAD_BASIC_INFORMATION basicInfo;
+
+    status = PhGetThreadBasicInformation(ThreadHandle, &basicInfo);
+
+    if (NT_SUCCESS(status))
+    {
+        if (!basicInfo.TebBaseAddress)
+            return STATUS_UNSUCCESSFUL;
+
+        *TebBaseAddress = (ULONG_PTR)WOW64_GET_TEB32(basicInfo.TebBaseAddress);
+    }
+
+    return status;
+}
+
+/**
+ * Gets a thread's Win32 start address.
+ *
+ * \param ThreadHandle A handle to a thread. The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ * \param StartAddress A variable which receives the start address of the thread.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetThreadStartAddress(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PULONG_PTR StartAddress
+    )
+{
+    return NtQueryInformationThread(
+        ThreadHandle,
+        ThreadQuerySetWin32StartAddress,
+        StartAddress,
+        sizeof(ULONG_PTR),
+        NULL
+        );
+}
+
+/**
+ * Gets a thread's I/O priority.
+ *
+ * \param ThreadHandle A handle to a thread. The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ * \param IoPriority A variable which receives the I/O priority of the thread.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetThreadIoPriority(
+    _In_ HANDLE ThreadHandle,
+    _Out_ IO_PRIORITY_HINT *IoPriority
+    )
+{
+    return NtQueryInformationThread(
+        ThreadHandle,
+        ThreadIoPriority,
+        IoPriority,
+        sizeof(IO_PRIORITY_HINT),
+        NULL
+        );
+}
+
+/**
+ * Gets a thread's page priority.
+ *
+ * \param ThreadHandle A handle to a thread. The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ * \param PagePriority A variable which receives the page priority of the thread.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetThreadPagePriority(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PULONG PagePriority
+    )
+{
+    NTSTATUS status;
+    PAGE_PRIORITY_INFORMATION pagePriorityInfo;
+
+    status = NtQueryInformationThread(
+        ThreadHandle,
+        ThreadPagePriority,
+        &pagePriorityInfo,
+        sizeof(PAGE_PRIORITY_INFORMATION),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *PagePriority = pagePriorityInfo.PagePriority;
+    }
+
+    return status;
+}
+
+/**
+ * Gets a thread's dynamic boosting.
+ *
+ * \param ThreadHandle A handle to a thread. The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ * \param PriorityBoostDisabled A variable which receives the dynamic boosting state.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetThreadPriorityBoost(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PBOOLEAN PriorityBoostDisabled
+    )
+{
+    NTSTATUS status;
+    ULONG priorityBoost;
+
+    status = NtQueryInformationThread(
+        ThreadHandle,
+        ThreadPriorityBoost,
+        &priorityBoost,
+        sizeof(ULONG),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *PriorityBoostDisabled = !!priorityBoost;
+    }
+
+    return status;
+}
+
+/**
+ * Gets a thread's performance counter.
+ *
+ * \param ThreadHandle A handle to a thread. The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ * \param PerformanceCounter A variable which receives the 64-bit performance counter.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetThreadPerformanceCounter(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PLARGE_INTEGER PerformanceCounter
+    )
+{
+    NTSTATUS status;
+    LARGE_INTEGER performanceCounter;
+
+    status = NtQueryInformationThread(
+        ThreadHandle,
+        ThreadPerformanceCount,
+        &performanceCounter,
+        sizeof(LARGE_INTEGER),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *PerformanceCounter = performanceCounter;
+    }
+
+    return status;
+}
+
+/**
+ * Gets a thread's cycle count.
+ *
+ * \param ThreadHandle A handle to a thread. The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ * \param CycleTime A variable which receives the 64-bit cycle time.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetThreadCycleTime(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PULONG64 CycleTime
+    )
+{
+    NTSTATUS status;
+    THREAD_CYCLE_TIME_INFORMATION cycleTimeInfo;
+
+    status = NtQueryInformationThread(
+        ThreadHandle,
+        ThreadCycleTime,
+        &cycleTimeInfo,
+        sizeof(THREAD_CYCLE_TIME_INFORMATION),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *CycleTime = cycleTimeInfo.AccumulatedCycles;
+    }
+
+    return status;
+}
+
+/**
+ * Retrieves the ideal processor for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread whose ideal processor is to be retrieved.
+ * \param[out] ProcessorNumber A pointer to a PROCESSOR_NUMBER structure that receives the ideal processor information.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadIdealProcessor(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PPROCESSOR_NUMBER ProcessorNumber
+    )
+{
+    return NtQueryInformationThread(
+        ThreadHandle,
+        ThreadIdealProcessorEx,
+        ProcessorNumber,
+        sizeof(PROCESSOR_NUMBER),
+        NULL
+        );
+}
+
+/**
+ * Retrieves the suspend count for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread whose suspend count is to be retrieved.
+ * \param[out] SuspendCount A pointer to a variable that receives the suspend count.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadSuspendCount(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PULONG SuspendCount
+    )
+{
+    return NtQueryInformationThread(
+        ThreadHandle,
+        ThreadSuspendCount,
+        SuspendCount,
+        sizeof(ULONG),
+        NULL
+        );
+}
+
+/**
+ * Retrieves the WOW64 context for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread whose WOW64 context is to be retrieved.
+ * \param[out] Context A pointer to a WOW64_CONTEXT structure that receives the context.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadWow64Context(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PWOW64_CONTEXT Context
+    )
+{
+    return NtQueryInformationThread(
+        ThreadHandle,
+        ThreadWow64Context,
+        Context,
+        sizeof(WOW64_CONTEXT),
+        NULL
+        );
+}
+
+#if defined(_ARM64_)
+/**
+ * Retrieves the ARM32 context for a thread on ARM64 systems.
+ *
+ * \param[in] ThreadHandle A handle to the thread whose ARM32 context is to be retrieved.
+ * \param[out] Context A pointer to an ARM_NT_CONTEXT structure that receives the context.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadArm32Context(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PARM_NT_CONTEXT Context
+    )
+{
+    return NtQueryInformationThread(
+        ThreadHandle,
+        ThreadWow64Context,
+        Context,
+        sizeof(ARM_NT_CONTEXT),
+        NULL
+        );
+}
+#endif
+
+/**
+ * Retrieves the break on termination state for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread.
+ * \param[out] BreakOnTermination A pointer to a variable that receives the break on termination state.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadBreakOnTermination(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PBOOLEAN BreakOnTermination
+    )
+{
+    NTSTATUS status;
+    ULONG breakOnTermination;
+
+    status = NtQueryInformationThread(
+        ThreadHandle,
+        ThreadBreakOnTermination,
+        &breakOnTermination,
+        sizeof(ULONG),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *BreakOnTermination = !!breakOnTermination;
+    }
+
+    return status;
+}
+
+/**
+ * Sets the break on termination state for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread.
+ * \param[in] BreakOnTermination TRUE to enable break on termination, FALSE to disable.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhSetThreadBreakOnTermination(
+    _In_ HANDLE ThreadHandle,
+    _In_ BOOLEAN BreakOnTermination
+    )
+{
+    ULONG breakOnTermination;
+
+    breakOnTermination = BreakOnTermination ? 1 : 0;
+
+    return NtSetInformationThread(
+        ThreadHandle,
+        ThreadBreakOnTermination,
+        &breakOnTermination,
+        sizeof(ULONG)
+        );
+}
+
+/**
+ * Retrieves the container ID for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread.
+ * \param[out] ContainerId A pointer to a GUID structure that receives the container ID.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadContainerId(
+    _In_ HANDLE ThreadHandle,
+    _In_ PGUID ContainerId
+    )
+{
+    NTSTATUS status;
+    GUID threadContainerId;
+
+    status = NtQueryInformationThread(
+        ThreadHandle,
+        ThreadContainerId,
+        &threadContainerId,
+        sizeof(ULONG),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        memcpy(ContainerId, &threadContainerId, sizeof(GUID));
+    }
+
+    return status;
+}
+
+/**
+ * Retrieves the I/O pending state for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread whose I/O pending state is to be retrieved.
+ * \param[out] IsIoPending A pointer to a variable that receives the I/O pending state.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadIsIoPending(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PBOOLEAN IsIoPending
+    )
+{
+    NTSTATUS status;
+    ULONG isIoPending;
+
+    status = NtQueryInformationThread(
+        ThreadHandle,
+        ThreadIsIoPending,
+        &isIoPending,
+        sizeof(ULONG),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *IsIoPending = !!isIoPending;
+    }
+
+    return status;
+}
+
+/**
+ * Gets time information for a thread.
+ *
+ * \param ThreadHandle A handle to a thread.
+ * \param Times A variable which receives the information.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadTimes(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PKERNEL_USER_TIMES Times
+    )
+{
+    return NtQueryInformationThread(
+        ThreadHandle,
+        ThreadTimes,
+        Times,
+        sizeof(KERNEL_USER_TIMES),
+        NULL
+        );
+}
+
+/**
+ * Retrieves the termination state for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread whose termination state is to be retrieved.
+ * \param[out] IsTerminated A pointer to a variable that receives the termination state (TRUE if terminated).
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadIsTerminated(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PBOOLEAN IsTerminated
+    )
+{
+    NTSTATUS status;
+    ULONG threadIsTerminated;
+
+    status = NtQueryInformationThread(
+        ThreadHandle,
+        ThreadIsTerminated,
+        &threadIsTerminated,
+        sizeof(ULONG),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *IsTerminated = !!threadIsTerminated;
+    }
+
+    return status;
+}
+
+/**
+ * Determines if a thread is terminated by waiting with zero timeout.
+ *
+ * \param[in] ThreadHandle A handle to the thread.
+ * \return TRUE if the thread is terminated, FALSE otherwise.
+ */
+BOOLEAN PhGetThreadIsTerminated2(
+    _In_ HANDLE ThreadHandle
+    )
+{
+    NTSTATUS status;
+    LARGE_INTEGER timeout;
+
+    memset(&timeout, 0, sizeof(LARGE_INTEGER));
+
+    status = NtWaitForSingleObject(
+        ThreadHandle,
+        FALSE,
+        &timeout
+        );
+
+    return status == STATUS_WAIT_0;
+}
+
+/**
+ * Retrieves the group affinity for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread whose group affinity is to be retrieved.
+ * \param[out] GroupAffinity A pointer to a GROUP_AFFINITY structure that receives the group affinity.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadGroupAffinity(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PGROUP_AFFINITY GroupAffinity
+    )
+{
+    ULONG returnLength;
+
+    return NtQueryInformationThread(
+        ThreadHandle,
+        ThreadGroupInformation,
+        GroupAffinity,
+        sizeof(GROUP_AFFINITY),
+        &returnLength
+        );
+}
+
+/**
+ * Retrieves the index information for a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread whose index information is to be retrieved.
+ * \param[out] ThreadIndex A pointer to a THREAD_INDEX_INFORMATION structure that receives the index information.
+ * \return Successful or errant status.
+ * \remarks The handle must have THREAD_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadIndexInformation(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PTHREAD_INDEX_INFORMATION ThreadIndex
+    )
+{
+    ULONG returnLength;
+
+    return NtQueryInformationThread(
+        ThreadHandle,
+        ThreadIndexInformation,
+        ThreadIndex,
+        sizeof(THREAD_INDEX_INFORMATION),
+        &returnLength
+        );
+}
+
+/**
+ * Terminates a thread.
+ *
+ * \param[in] ThreadHandle A handle to the thread to be terminated.
+ * \param[in] ExitStatus The exit status for the thread.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhTerminateThread(
     _In_ HANDLE ThreadHandle,
     _In_ NTSTATUS ExitStatus
@@ -192,13 +840,12 @@ NTSTATUS PhTerminateThread(
     return status;
 }
 
-/*
+/**
  * Retrieves the context of a thread.
  *
- * \param ThreadHandle The handle to the thread.
- * \param ThreadContext A pointer to the CONTEXT structure that receives the thread context.
- *
- * \return The status of the operation.
+ * \param[in] ThreadHandle The handle to the thread.
+ * \param[in,out] ThreadContext A pointer to the CONTEXT structure that receives the thread context.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetContextThread(
     _In_ HANDLE ThreadHandle,
@@ -215,6 +862,15 @@ NTSTATUS PhGetContextThread(
     return status;
 }
 
+/**
+ * Atomically queries raw bytes from a thread's TEB at a specified offset.
+ *
+ * \param[in] ThreadHandle Handle to target thread.
+ * \param[in,out] TebInformation Buffer to receive the bytes.
+ * \param[in] TebOffset Offset (in bytes) from TEB base.
+ * \param[in] BytesToRead Number of bytes to read.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetThreadTebInformationAtomic(
     _In_ HANDLE ThreadHandle,
     _Inout_bytecount_(BytesToRead) PVOID TebInformation,
@@ -225,6 +881,9 @@ NTSTATUS PhGetThreadTebInformationAtomic(
     NTSTATUS status;
     THREAD_TEB_INFORMATION threadInfo;
     ULONG returnLength;
+
+    if (WindowsVersion < WINDOWS_11_24H2)
+        return STATUS_NOT_SUPPORTED;
 
     threadInfo.TebInformation = TebInformation;
     threadInfo.TebOffset = TebOffset; // FIELD_OFFSET(TEB, Value);
@@ -241,6 +900,13 @@ NTSTATUS PhGetThreadTebInformationAtomic(
     return status;
 }
 
+/**
+ * Retrieves a thread's name (Set by SetThreadDescription API).
+ *
+ * \param[in] ThreadHandle Handle to thread (THREAD_QUERY_LIMITED_INFORMATION).
+ * \param[out] ThreadName Receives allocated PPH_STRING containing the name.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetThreadName(
     _In_ HANDLE ThreadHandle,
     _Out_ PPH_STRING *ThreadName
@@ -265,7 +931,7 @@ NTSTATUS PhGetThreadName(
         &returnLength
         );
 
-    if (status == STATUS_BUFFER_OVERFLOW)
+    if (status == STATUS_BUFFER_TOO_SMALL)
     {
         PhFree(buffer);
         bufferSize = returnLength;
@@ -297,6 +963,13 @@ NTSTATUS PhGetThreadName(
     return status;
 }
 
+/**
+ * Sets the description (thread name) for a thread.
+ *
+ * \param[in] ThreadHandle Handle to thread (THREAD_SET_LIMITED_INFORMATION).
+ * \param[in] ThreadName Wide string for new name.
+ * \returns NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetThreadName(
     _In_ HANDLE ThreadHandle,
     _In_ PCWSTR ThreadName
@@ -329,11 +1002,46 @@ NTSTATUS PhSetThreadName(
 }
 
 /**
+ * Gets a thread's affinity mask.
+ *
+ * \param[in] ThreadHandle A handle to a thread.
+ * \param[out] AffinityMask The affinity mask.
+ * \return NTSTATUS Successful or errant status.
+ * \remarks The handle must have THREAD_SET_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetThreadAffinityMask(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PKAFFINITY AffinityMask
+    )
+{
+    NTSTATUS status;
+    THREAD_BASIC_INFORMATION basicInfo;
+
+    status = PhGetThreadBasicInformation(ThreadHandle, &basicInfo);
+
+    if (NT_SUCCESS(status))
+    {
+        *AffinityMask = basicInfo.AffinityMask;
+    }
+
+    return status;
+
+    //return NtQueryInformationThread(
+    //    ThreadHandle,
+    //    ThreadAffinityMask,
+    //    &AffinityMask,
+    //    sizeof(KAFFINITY),
+    //    NULL
+    //    );
+}
+
+/**
  * Sets a thread's affinity mask.
  *
- * \param ThreadHandle A handle to a thread. The handle must have THREAD_SET_LIMITED_INFORMATION
- * access.
- * \param AffinityMask The new affinity mask.
+ * \param[in] ThreadHandle A handle to a thread.
+ * \param[in] AffinityMask The new affinity mask.
+ * \return NTSTATUS Successful or errant status.
+ * \remarks The handle must have THREAD_SET_LIMITED_INFORMATION access.
  */
 NTSTATUS PhSetThreadAffinityMask(
     _In_ HANDLE ThreadHandle,
@@ -362,6 +1070,13 @@ NTSTATUS PhSetThreadAffinityMask(
     return status;
 }
 
+/**
+ * Sets thread base priority using a CLIENT_ID (system-wide).
+ *
+ * \param[in] ClientId Target thread identifier.
+ * \param[in] Increment New base priority value.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetThreadBasePriorityClientId(
     _In_ CLIENT_ID ClientId,
     _In_ KPRIORITY Increment
@@ -385,6 +1100,13 @@ NTSTATUS PhSetThreadBasePriorityClientId(
     return status;
 }
 
+/**
+ * Sets a thread's base priority.
+ *
+ * \param[in] ThreadHandle Handle to thread.
+ * \param[in] Increment New priority value (KPRIORITY).
+ * \returns NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetThreadBasePriority(
     _In_ HANDLE ThreadHandle,
     _In_ KPRIORITY Increment
@@ -415,9 +1137,10 @@ NTSTATUS PhSetThreadBasePriority(
 /**
  * Sets a thread's I/O priority.
  *
- * \param ThreadHandle A handle to a thread. The handle must have THREAD_SET_LIMITED_INFORMATION
- * access.
- * \param IoPriority The new I/O priority.
+ * \param[in] ThreadHandle A handle to a thread.
+ * \param[in] IoPriority The new I/O priority.
+ * \return NTSTATUS Successful or errant status.
+ * \remarks The handle must have THREAD_SET_LIMITED_INFORMATION access.
  */
 NTSTATUS PhSetThreadIoPriority(
     _In_ HANDLE ThreadHandle,
@@ -446,6 +1169,13 @@ NTSTATUS PhSetThreadIoPriority(
     return status;
 }
 
+/**
+ * Sets a thread's page priority.
+ *
+ * \param[in] ThreadHandle Thread handle.
+ * \param[in] PagePriority New page priority value (1..5 typical).
+ * \returns NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetThreadPagePriority(
     _In_ HANDLE ThreadHandle,
     _In_ ULONG PagePriority
@@ -476,6 +1206,13 @@ NTSTATUS PhSetThreadPagePriority(
     return status;
 }
 
+/**
+ * Enables or disables priority boost for a thread.
+ *
+ * \param[in] ThreadHandle Thread handle.
+ * \param[in] DisablePriorityBoost TRUE to disable boost, FALSE to enable.
+ * \returns NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetThreadPriorityBoost(
     _In_ HANDLE ThreadHandle,
     _In_ BOOLEAN DisablePriorityBoost
@@ -506,6 +1243,48 @@ NTSTATUS PhSetThreadPriorityBoost(
     return status;
 }
 
+/**
+ * Retrieves the current power throttling state applied to the specified thread.
+ *
+ * \param[in] ThreadHandle Handle to the thread whose power throttling state is to be queried.
+ * \param[out] PowerThrottlingState Pointer to a POWER_THROTTLING_THREAD_STATE structure that receives the throttling state.
+ * \returns NTSTATUS Successful or errant status.
+ */
+NTSTATUS PhGetThreadPowerThrottlingState(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PPOWER_THROTTLING_THREAD_STATE PowerThrottlingState
+    )
+{
+    NTSTATUS status;
+    POWER_THROTTLING_THREAD_STATE threadPowerThrottlingState;
+
+    memset(&threadPowerThrottlingState, 0, sizeof(POWER_THROTTLING_THREAD_STATE));
+    threadPowerThrottlingState.Version = POWER_THROTTLING_THREAD_CURRENT_VERSION;
+
+    status = NtQueryInformationThread(
+        ThreadHandle,
+        ThreadPowerThrottlingState,
+        &threadPowerThrottlingState,
+        sizeof(POWER_THROTTLING_THREAD_STATE),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *PowerThrottlingState = threadPowerThrottlingState;
+    }
+
+    return status;
+}
+
+/**
+ * Sets a thread's ideal processor (ThreadIdealProcessorEx).
+ *
+ * \param[in] ULONG Thread handle.
+ * \param[in] ProcessorNumber Desired processor number/group.
+ * \param[out] PreviousIdealProcessor Receives previous value if provided.
+ * \returns NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetThreadIdealProcessor(
     _In_ HANDLE ThreadHandle,
     _In_ PPROCESSOR_NUMBER ProcessorNumber,
@@ -539,6 +1318,13 @@ NTSTATUS PhSetThreadIdealProcessor(
     return status;
 }
 
+/**
+ * Sets a thread's group affinity.
+ *
+ * \param[in] ThreadHandle Thread handle.
+ * \param[in] GroupAffinity New affinity data.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetThreadGroupAffinity(
     _In_ HANDLE ThreadHandle,
     _In_ GROUP_AFFINITY GroupAffinity
@@ -569,10 +1355,9 @@ NTSTATUS PhSetThreadGroupAffinity(
 /**
  * The PhGetThreadLastSystemCall function returns the last system call of a thread.
  *
- * \param ThreadHandle A handle to the thread.
- * \param LastSystemCall The last system call of the thread.
- *
- * \return Successful or errant status.
+ * \param[in] ThreadHandle A handle to the thread.
+ * \param[out] LastSystemCall The last system call of the thread.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetThreadLastSystemCall(
     _In_ HANDLE ThreadHandle,
@@ -585,30 +1370,27 @@ NTSTATUS PhGetThreadLastSystemCall(
             ThreadHandle,
             ThreadLastSystemCall,
             LastSystemCall,
-            RTL_SIZEOF_THROUGH_FIELD(THREAD_LAST_SYSCALL_INFORMATION, Pad),
+            FIELD_OFFSET(THREAD_LAST_SYSCALL_INFORMATION, WaitTime),
             NULL
             );
     }
-    else
-    {
-        return NtQueryInformationThread(
-            ThreadHandle,
-            ThreadLastSystemCall,
-            LastSystemCall,
-            sizeof(THREAD_LAST_SYSCALL_INFORMATION),
-            NULL
-            );
-    }
+
+    return NtQueryInformationThread(
+        ThreadHandle,
+        ThreadLastSystemCall,
+        LastSystemCall,
+        sizeof(THREAD_LAST_SYSCALL_INFORMATION),
+        NULL
+        );
 }
 
 // rev from Advapi32!ImpersonateAnonymousToken (dmex)
 /**
  * The PhCreateImpersonationToken function creates an anonymous logon token.
  *
- * \param ThreadHandle A handle to the thread.
- * \param TokenHandle A handle to the token.
- *
- * \return Successful or errant status.
+ * \param[in] ThreadHandle A handle to the thread.
+ * \param[out] TokenHandle A handle to the token.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhCreateImpersonationToken(
     _In_ HANDLE ThreadHandle,
@@ -657,10 +1439,9 @@ NTSTATUS PhCreateImpersonationToken(
 /**
  * The PhImpersonateToken function enables the specified thread to impersonate the security context of a token.
  *
- * \param ThreadHandle A handle to the thread.
- * \param TokenHandle A handle to the token.
- *
- * \return Successful or errant status.
+ * \param[in] ThreadHandle A handle to the thread.
+ * \param[in] TokenHandle A handle to the token.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhImpersonateToken(
     _In_ HANDLE ThreadHandle,
@@ -688,19 +1469,20 @@ NTSTATUS PhImpersonateToken(
         OBJECT_ATTRIBUTES objectAttributes;
         HANDLE tokenHandle;
 
-        InitializeObjectAttributes(
-            &objectAttributes,
-            NULL,
-            OBJ_EXCLUSIVE,
-            NULL,
-            NULL
-            );
-
+        memset(&securityService, 0, sizeof(SECURITY_QUALITY_OF_SERVICE));
         securityService.Length = sizeof(SECURITY_QUALITY_OF_SERVICE);
         securityService.ImpersonationLevel = SecurityImpersonation;
         securityService.ContextTrackingMode = SECURITY_DYNAMIC_TRACKING;
         securityService.EffectiveOnly = FALSE;
-        objectAttributes.SecurityQualityOfService = &securityService;
+
+        InitializeObjectAttributesEx(
+            &objectAttributes,
+            NULL,
+            OBJ_EXCLUSIVE,
+            NULL,
+            NULL,
+            &securityService
+            );
 
         status = NtDuplicateToken(
             TokenHandle,
@@ -740,9 +1522,8 @@ NTSTATUS PhImpersonateToken(
 /**
  * The PhRevertImpersonationToken function terminates the impersonation of a security context.
  *
- * \param ThreadHandle A handle to the thread.
- *
- * \return Successful or errant status.
+ * \param[in] ThreadHandle A handle to the thread.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhRevertImpersonationToken(
     _In_ HANDLE ThreadHandle
@@ -761,11 +1542,10 @@ NTSTATUS PhRevertImpersonationToken(
 /**
  * Retrieves the last error status of a thread.
  *
- * \param ThreadHandle A handle to the thread.
- * \param ProcessHandle A handle to the process.
- * \param LastStatusValue The last status of the thread.
- *
- * \return Successful or errant status.
+ * \param[in] ThreadHandle A handle to the thread.
+ * \param[in] ProcessHandle A handle to the process.
+ * \param[out] LastStatusValue The last status of the thread.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetThreadLastStatusValue(
     _In_ HANDLE ThreadHandle,
@@ -787,7 +1567,7 @@ NTSTATUS PhGetThreadLastStatusValue(
 
     if (isWow64)
     {
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(WOW64_GET_TEB32(basicInfo.TebBaseAddress), UFIELD_OFFSET(TEB32, LastStatusValue)),
             LastStatusValue,
@@ -798,7 +1578,7 @@ NTSTATUS PhGetThreadLastStatusValue(
     else
 #endif
     {
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(basicInfo.TebBaseAddress, UFIELD_OFFSET(TEB, LastStatusValue)), // LastErrorValue/ExceptionCode
             LastStatusValue,
@@ -817,8 +1597,7 @@ NTSTATUS PhGetThreadLastStatusValue(
  * PROCESS_QUERY_LIMITED_INFORMATION and PROCESS_VM_READ access.
  * \param[out] MTAInits The total number of MTA references in the process.
  * \param[out] MTAIncInits The number of MTA references from CoIncrementMTAUsage.
- *
- * \return Successful or errant status.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetProcessMTAUsage(
     _In_ HANDLE ProcessHandle,
@@ -872,7 +1651,7 @@ NTSTATUS PhGetProcessMTAUsage(
 
     if (MTAInits)
     {
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             mtaUsageGlobals->MTAInits,
             MTAInits,
@@ -886,7 +1665,7 @@ NTSTATUS PhGetProcessMTAUsage(
 
     if (MTAIncInits)
     {
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             mtaUsageGlobals->MTAIncInits,
             MTAIncInits,
@@ -910,8 +1689,7 @@ NTSTATUS PhGetProcessMTAUsage(
  * PROCESS_QUERY_LIMITED_INFORMATION and PROCESS_VM_READ access.
  * \param[out] ApartmentFlags The COM apartment flags of the thread.
  * \param[out] ComInits The number of times the thread initialized COM.
- *
- * \return Successful or errant status.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetThreadApartmentFlags(
     _In_ HANDLE ThreadHandle,
@@ -923,10 +1701,10 @@ NTSTATUS PhGetThreadApartmentFlags(
     NTSTATUS status;
     THREAD_BASIC_INFORMATION basicInfo;
     PVOID apartmentStateOffset;
+    PVOID oletlsBaseAddress;
 #ifdef _WIN64
     BOOLEAN isWow64 = FALSE;
 #endif
-    PVOID oletlsBaseAddress = NULL;
 
     if (!NT_SUCCESS(status = PhGetThreadBasicInformation(ThreadHandle, &basicInfo)))
         return status;
@@ -939,7 +1717,7 @@ NTSTATUS PhGetThreadApartmentFlags(
     {
         ULONG oletlsDataAddress32 = 0;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(WOW64_GET_TEB32(basicInfo.TebBaseAddress), UFIELD_OFFSET(TEB32, ReservedForOle)),
             &oletlsDataAddress32,
@@ -954,7 +1732,7 @@ NTSTATUS PhGetThreadApartmentFlags(
     {
         ULONG_PTR oletlsDataAddress = 0;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(basicInfo.TebBaseAddress, UFIELD_OFFSET(TEB, ReservedForOle)),
             &oletlsDataAddress,
@@ -984,7 +1762,7 @@ NTSTATUS PhGetThreadApartmentFlags(
     apartmentStateOffset = PTR_ADD_OFFSET(oletlsBaseAddress, UFIELD_OFFSET(SOleTlsData, Flags));
 #endif
 
-    status = NtReadVirtualMemory(
+    status = PhReadVirtualMemory(
         ProcessHandle,
         apartmentStateOffset,
         ApartmentFlags,
@@ -1008,7 +1786,7 @@ NTSTATUS PhGetThreadApartmentFlags(
         comInitsOffset = PTR_ADD_OFFSET(oletlsBaseAddress, UFIELD_OFFSET(SOleTlsData, ComInits));
 #endif
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             comInitsOffset,
             ComInits,
@@ -1028,8 +1806,7 @@ NTSTATUS PhGetThreadApartmentFlags(
  * \param[in] ProcessHandle A handle to the process. The handle must have
  * PROCESS_QUERY_LIMITED_INFORMATION and PROCESS_VM_READ access.
  * \param[out] ApartmentInfo The COM apartment information of the thread.
- *
- * \return Successful or errant status.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetThreadApartment(
     _In_ HANDLE ThreadHandle,
@@ -1126,7 +1903,7 @@ NTSTATUS PhGetThreadApartment(
         // N.B. The thread lacks an explicit apartment. A single MTA init, however, is
         // enough to put all apartmentless threads into implicit MTA. The existence of MTA
         // can be checked by reading the process-wide MTA usage counter. (diversenok)
-        // 
+        //
 
         if (!NT_SUCCESS(status = PhGetProcessMTAUsage(ProcessHandle, &info.ComInits, NULL)))
             return status;
@@ -1150,13 +1927,13 @@ NTSTATUS PhGetThreadApartment(
 
 // rev from advapi32!WctGetCOMInfo (dmex)
 /**
- * If a thread is blocked on a COM call, we can retrieve COM ownership information using these functions. Retrieves COM information when a thread is blocked on a COM call.
+ * If a thread is blocked on a COM call, we can retrieve COM ownership information using these functions.
+ * Retrieves COM information when a thread is blocked on a COM call.
  *
- * \param ThreadHandle A handle to the thread.
- * \param ProcessHandle A handle to a process.
- * \param ApartmentCallState The COM call information.
- *
- * \return Successful or errant status.
+ * \param[in] ThreadHandle A handle to the thread.
+ * \param[in] ProcessHandle A handle to a process.
+ * \param[out] ApartmentCallState The COM call information.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetThreadApartmentCallState(
     _In_ HANDLE ThreadHandle,
@@ -1169,7 +1946,7 @@ NTSTATUS PhGetThreadApartmentCallState(
 #ifdef _WIN64
     BOOLEAN isWow64 = FALSE;
 #endif
-    __typeof__(RTL_FIELD_TYPE(TEB, ReservedForOle)) oletlsBaseAddress = NULL;
+    PVOID oletlsBaseAddress = NULL;
 
     if (!NT_SUCCESS(status = PhGetThreadBasicInformation(ThreadHandle, &basicInfo)))
         return status;
@@ -1181,7 +1958,7 @@ NTSTATUS PhGetThreadApartmentCallState(
     {
         ULONG oletlsDataAddress32 = 0;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(WOW64_GET_TEB32(basicInfo.TebBaseAddress), UFIELD_OFFSET(TEB32, ReservedForOle)),
             &oletlsDataAddress32,
@@ -1196,7 +1973,7 @@ NTSTATUS PhGetThreadApartmentCallState(
     {
         ULONG_PTR oletlsDataAddress = 0;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(basicInfo.TebBaseAddress, UFIELD_OFFSET(TEB, ReservedForOle)),
             &oletlsDataAddress,
@@ -1241,9 +2018,9 @@ NTSTATUS PhGetThreadApartmentCallState(
         ULONG outgoingCallDataOffset = 0;
         ULONG incomingCallDataOffset = 0;
         ULONG outgoingActivationDataOffset = 0;
-        tagOutgoingCallData outgoingCallData;
-        tagIncomingCallData incomingCallData;
-        tagOutgoingActivationData outgoingActivationData;
+        tagOutgoingCallData outgoingCallData = { 0 };
+        tagIncomingCallData incomingCallData = { 0 };
+        tagOutgoingActivationData outgoingActivationData = { 0 };
 
         if (PhBeginInitOnce(&initOnce))
         {
@@ -1258,13 +2035,9 @@ NTSTATUS PhGetThreadApartmentCallState(
             PhEndInitOnce(&initOnce);
         }
 
-        memset(&outgoingCallData, 0, sizeof(tagOutgoingCallData));
-        memset(&incomingCallData, 0, sizeof(tagIncomingCallData));
-        memset(&outgoingActivationData, 0, sizeof(tagOutgoingActivationData));
-
         if (HR_SUCCESS(CoGetCallState_I(CALL_STATE_TYPE_OUTGOING, &outgoingCallDataOffset)) && outgoingCallDataOffset)
         {
-            NtReadVirtualMemory(
+            PhReadVirtualMemory(
                 ProcessHandle,
                 PTR_ADD_OFFSET(oletlsBaseAddress, outgoingCallDataOffset),
                 &outgoingCallData,
@@ -1275,7 +2048,7 @@ NTSTATUS PhGetThreadApartmentCallState(
 
         if (HR_SUCCESS(CoGetCallState_I(CALL_STATE_TYPE_INCOMING, &incomingCallDataOffset)) && incomingCallDataOffset)
         {
-            NtReadVirtualMemory(
+            PhReadVirtualMemory(
                 ProcessHandle,
                 PTR_ADD_OFFSET(oletlsBaseAddress, incomingCallDataOffset),
                 &incomingCallData,
@@ -1286,7 +2059,7 @@ NTSTATUS PhGetThreadApartmentCallState(
 
         if (HR_SUCCESS(CoGetCallState_I(CALL_STATE_TYPE_ACTIVATION, &outgoingActivationDataOffset)) && outgoingActivationDataOffset)
         {
-            NtReadVirtualMemory(
+            PhReadVirtualMemory(
                 ProcessHandle,
                 PTR_ADD_OFFSET(oletlsBaseAddress, outgoingActivationDataOffset),
                 &outgoingActivationData,
@@ -1317,8 +2090,7 @@ NTSTATUS PhGetThreadApartmentCallState(
  * \param[in] ProcessHandle A handle to the process. The handle must have
  * PROCESS_QUERY_LIMITED_INFORMATION and PROCESS_VM_READ access.
  * \param[out] HasRpcState Whether the thread has allocated RPC state.
- *
- * \return Successful or errant status.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetThreadRpcState(
     _In_ HANDLE ThreadHandle,
@@ -1341,13 +2113,13 @@ NTSTATUS PhGetThreadRpcState(
 
     if (isWow64)
     {
-        ULONG reservedForNtRpc32 = 0;
+        typeof(RTL_FIELD_TYPE(TEB32, ReservedForNtRpc)) reservedForNtRpc32 = 0;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(WOW64_GET_TEB32(basicInfo.TebBaseAddress), UFIELD_OFFSET(TEB32, ReservedForNtRpc)),
             &reservedForNtRpc32,
-            sizeof(ULONG),
+            sizeof(RTL_FIELD_TYPE(TEB32, ReservedForNtRpc)),
             NULL
             );
 
@@ -1356,13 +2128,13 @@ NTSTATUS PhGetThreadRpcState(
     else
 #endif
     {
-        ULONG_PTR reservedForNtRpc = 0;
+        typeof(RTL_FIELD_TYPE(TEB, ReservedForNtRpc)) reservedForNtRpc = NULL;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(basicInfo.TebBaseAddress, UFIELD_OFFSET(TEB, ReservedForNtRpc)),
             &reservedForNtRpc,
-            sizeof(ULONG_PTR),
+            sizeof(RTL_FIELD_TYPE(TEB, ReservedForNtRpc)),
             NULL
             );
 
@@ -1376,11 +2148,10 @@ NTSTATUS PhGetThreadRpcState(
 /**
  * Retrieves the thread identifier when a thread is blocked on a critical section.
  *
- * \param ThreadHandle A handle to the thread.
- * \param ProcessId The ID of a process.
- * \param ThreadId The ID of the thread owning the critical section.
- *
- * \return Successful or errant status.
+ * \param[in] ThreadHandle A handle to the thread.
+ * \param[in] ProcessId The ID of a process.
+ * \param[out] ThreadId The ID of the thread owning the critical section.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetThreadCriticalSectionOwnerThread(
     _In_ HANDLE ThreadHandle,
@@ -1428,11 +2199,10 @@ NTSTATUS PhGetThreadCriticalSectionOwnerThread(
 /**
  * Retrieves the connection state when a thread is blocked on a socket.
  *
- * \param ThreadHandle A handle to the thread.
- * \param ProcessHandle A handle to a process.
- * \param ThreadSocketState The state of the socket.
- *
- * \return Successful or errant status.
+ * \param[in] ThreadHandle A handle to the thread.
+ * \param[in] ProcessHandle A handle to a process.
+ * \param[out] ThreadSocketState The state of the socket.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetThreadSocketState(
     _In_ HANDLE ThreadHandle,
@@ -1442,11 +2212,10 @@ NTSTATUS PhGetThreadSocketState(
 {
     NTSTATUS status;
     THREAD_BASIC_INFORMATION basicInfo;
-    BOOLEAN openedProcessHandle = FALSE;
 #ifdef _WIN64
     BOOLEAN isWow64 = FALSE;
 #endif
-    __typeof__(RTL_FIELD_TYPE(TEB, WinSockData)) winsockHandleAddress = NULL;
+    typeof(RTL_FIELD_TYPE(TEB, WinSockData)) winsockHandleAddress = NULL;
 
     if (!NT_SUCCESS(status = PhGetThreadBasicInformation(ThreadHandle, &basicInfo)))
         return status;
@@ -1456,13 +2225,13 @@ NTSTATUS PhGetThreadSocketState(
 
     if (isWow64)
     {
-        ULONG winsockDataAddress = 0;
+        typeof(RTL_FIELD_TYPE(TEB32, WinSockData)) winsockDataAddress = 0;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(WOW64_GET_TEB32(basicInfo.TebBaseAddress), UFIELD_OFFSET(TEB32, WinSockData)),
             &winsockDataAddress,
-            sizeof(ULONG),
+            sizeof(RTL_FIELD_TYPE(TEB32, WinSockData)),
             NULL
             );
 
@@ -1471,21 +2240,22 @@ NTSTATUS PhGetThreadSocketState(
     else
 #endif
     {
-        ULONG_PTR winsockDataAddress = 0;
+        typeof(RTL_FIELD_TYPE(TEB, WinSockData)) winsockDataAddress = NULL;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(basicInfo.TebBaseAddress, UFIELD_OFFSET(TEB, WinSockData)),
             &winsockDataAddress,
-            sizeof(ULONG_PTR),
+            sizeof(RTL_FIELD_TYPE(TEB, WinSockData)),
             NULL
             );
 
-        winsockHandleAddress = (HANDLE)winsockDataAddress;
+        winsockHandleAddress = winsockDataAddress;
     }
 
     if (NT_SUCCESS(status) && winsockHandleAddress)
     {
+#if defined(PHLIB_SOCKET_STATE_WINSOCK)
         static LONG (WINAPI* LPFN_WSASTARTUP)(
             _In_ WORD wVersionRequested,
             _Out_ PVOID* lpWSAData
@@ -1531,8 +2301,10 @@ NTSTATUS PhGetThreadSocketState(
             LONG iProtocol;
         } CSADDR_INFO, *PCSADDR_INFO, FAR* LPCSADDR_INFO;
         PVOID wsaStartupData;
+#endif
         HANDLE winsockTargetHandle;
 
+#if defined(PHLIB_SOCKET_STATE_WINSOCK)
         if (PhBeginInitOnce(&initOnce))
         {
             PVOID baseAddress;
@@ -1555,7 +2327,7 @@ NTSTATUS PhGetThreadSocketState(
             status = STATUS_UNSUCCESSFUL;
             goto CleanupExit;
         }
-
+#endif
         status = NtDuplicateObject(
             ProcessHandle,
             winsockHandleAddress,
@@ -1568,22 +2340,44 @@ NTSTATUS PhGetThreadSocketState(
 
         if (NT_SUCCESS(status))
         {
-            ULONG returnLength;
             OBJECT_BASIC_INFORMATION winsockTargetBasicInfo;
-            INT winsockAddressInfoLength = sizeof(CSADDR_INFO);
-            CSADDR_INFO winsockAddressInfo;
 
-            memset(&winsockTargetBasicInfo, 0, sizeof(OBJECT_BASIC_INFORMATION));
-            NtQueryObject(
+            status = PhGetObjectBasicInformation(
+                ProcessHandle,
                 winsockTargetHandle,
-                ObjectBasicInformation,
-                &winsockTargetBasicInfo,
-                sizeof(OBJECT_BASIC_INFORMATION),
-                &returnLength
+                &winsockTargetBasicInfo
                 );
 
-            if (winsockTargetBasicInfo.HandleCount > 2)
+            if (NT_SUCCESS(status))
             {
+                ULONG winsockAddressInfoLength = sizeof(CSADDR_INFO);
+                CSADDR_INFO winsockAddressInfo;
+
+                status = PhAfdQuerySocketOption(
+                    winsockTargetHandle,
+                    SOL_SOCKET,
+                    SO_BSP_STATE,
+                    &winsockAddressInfo,
+                    winsockAddressInfoLength,
+                    &winsockAddressInfoLength
+                    );
+
+                if (NT_SUCCESS(status))
+                {
+                    if (winsockAddressInfo.iProtocol == 6)
+                    {
+                        if (winsockAddressInfo.LocalAddr.lpSockaddr && winsockAddressInfo.RemoteAddr.lpSockaddr)
+                            *ThreadSocketState = PH_THREAD_SOCKET_STATE_SHARED;
+                        else
+                            *ThreadSocketState = PH_THREAD_SOCKET_STATE_DISCONNECTED;
+                    }
+                    else
+                    {
+                        *ThreadSocketState = PH_THREAD_SOCKET_STATE_NOT_TCPIP;
+                    }
+                }
+
+#if defined(PHLIB_SOCKET_STATE_WINSOCK)
                 if (LPFN_GETSOCKOPT((UINT_PTR)winsockTargetHandle, SOL_SOCKET, SO_BSP_STATE, (PCHAR)&winsockAddressInfo, &winsockAddressInfoLength) != SOCKET_ERROR)
                 {
                     if (winsockAddressInfo.iProtocol == 6)
@@ -1600,31 +2394,34 @@ NTSTATUS PhGetThreadSocketState(
                 {
                     status = STATUS_UNSUCCESSFUL; // WSAGetLastError();
                 }
+#endif
             }
-            else
-            {
-                status = STATUS_UNSUCCESSFUL;
-            }
-
+#if defined(PHLIB_SOCKET_STATE_WINSOCK)
             LPFN_CLOSESOCKET((UINT_PTR)winsockTargetHandle);
-
+#endif
             NtClose(winsockTargetHandle);
         }
-
+#if defined(PHLIB_SOCKET_STATE_WINSOCK)
         LPFN_WSACLEANUP();
+#endif
     }
     else
     {
         status = STATUS_UNSUCCESSFUL;
     }
 
-CleanupExit:
-    if (openedProcessHandle)
-        NtClose(ProcessHandle);
-
     return status;
 }
 
+/**
+ * Retrieves stack base/limit pointers for a thread.
+ *
+ * \param[in] ThreadHandle Thread handle.
+ * \param[in] ProcessHandle Process handle.
+ * \param[out] LowPart Receives stack base address.
+ * \param[out] HighPart Receives stack limit address.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetThreadStackLimits(
     _In_ HANDLE ThreadHandle,
     _In_ HANDLE ProcessHandle,
@@ -1634,7 +2431,8 @@ NTSTATUS PhGetThreadStackLimits(
 {
     NTSTATUS status;
     THREAD_BASIC_INFORMATION basicInfo;
-    NT_TIB ntTib;
+    PVOID stackBaseAddress;
+    PVOID stackLimitAddress;
 #ifdef _WIN64
     BOOLEAN isWow64 = FALSE;
 #endif
@@ -1642,56 +2440,59 @@ NTSTATUS PhGetThreadStackLimits(
     if (!NT_SUCCESS(status = PhGetThreadBasicInformation(ThreadHandle, &basicInfo)))
         return status;
 
-    memset(&ntTib, 0, sizeof(NT_TIB));
-
 #ifdef _WIN64
     PhGetProcessIsWow64(ProcessHandle, &isWow64);
 
     if (isWow64)
     {
-        status = NtReadVirtualMemory(
+        typeof(RTL_FIELD_TYPE(TEB32, NtTib)) ntTib32 = { 0 };
+
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(WOW64_GET_TEB32(basicInfo.TebBaseAddress), UFIELD_OFFSET(TEB32, NtTib)),
-            &ntTib,
-            sizeof(NT_TIB32),
+            &ntTib32,
+            sizeof(RTL_FIELD_TYPE(TEB32, NtTib)),
             NULL
             );
+
+        stackBaseAddress = UlongToPtr(ntTib32.StackBase);
+        stackLimitAddress = UlongToPtr(ntTib32.StackLimit);
     }
     else
 #endif
     {
-        status = NtReadVirtualMemory(
+        typeof(RTL_FIELD_TYPE(TEB, NtTib)) ntTib = { 0 };
+
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(basicInfo.TebBaseAddress, UFIELD_OFFSET(TEB, NtTib)),
             &ntTib,
-            sizeof(NT_TIB),
+            sizeof(RTL_FIELD_TYPE(TEB, NtTib)),
             NULL
             );
+
+        stackBaseAddress = ntTib.StackBase;
+        stackLimitAddress = ntTib.StackLimit;
     }
 
     if (NT_SUCCESS(status))
     {
-#ifdef _WIN64
-        if (isWow64)
-        {
-            PNT_TIB32 ntTib32 = (PNT_TIB32)&ntTib;
-            *LowPart = (ULONG_PTR)UlongToPtr(ntTib32->StackLimit);
-            *HighPart = (ULONG_PTR)UlongToPtr(ntTib32->StackBase);
-        }
-        else
-        {
-            *LowPart = (ULONG_PTR)ntTib.StackLimit;
-            *HighPart = (ULONG_PTR)ntTib.StackBase;
-        }
-#else
-        *LowPart = (ULONG_PTR)ntTib.StackLimit;
-        *HighPart = (ULONG_PTR)ntTib.StackBase;
-#endif
+        *LowPart = (ULONG_PTR)stackBaseAddress;
+        *HighPart = (ULONG_PTR)stackLimitAddress;
     }
 
     return status;
 }
 
+/**
+ * Computes stack usage and total reserved size for a thread.
+ *
+ * \param[in] ThreadHandle Thread handle.
+ * \param[in] ProcessHandle Process handle.
+ * \param[out] StackUsage Bytes currently committed (base - limit).
+ * \param[out] StackLimit Total reserved size (base - allocation base).
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetThreadStackSize(
     _In_ HANDLE ThreadHandle,
     _In_ HANDLE ProcessHandle,
@@ -1701,7 +2502,8 @@ NTSTATUS PhGetThreadStackSize(
 {
     NTSTATUS status;
     THREAD_BASIC_INFORMATION basicInfo;
-    NT_TIB ntTib;
+    PVOID stackBaseAddress;
+    PVOID stackLimitAddress;
 #ifdef _WIN64
     BOOLEAN isWow64 = FALSE;
 #endif
@@ -1709,55 +2511,45 @@ NTSTATUS PhGetThreadStackSize(
     if (!NT_SUCCESS(status = PhGetThreadBasicInformation(ThreadHandle, &basicInfo)))
         return status;
 
-    memset(&ntTib, 0, sizeof(NT_TIB));
-
 #ifdef _WIN64
     PhGetProcessIsWow64(ProcessHandle, &isWow64);
 
     if (isWow64)
     {
-        status = NtReadVirtualMemory(
+        typeof(RTL_FIELD_TYPE(TEB32, NtTib)) ntTib32 = { 0 };
+
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(WOW64_GET_TEB32(basicInfo.TebBaseAddress), UFIELD_OFFSET(TEB32, NtTib)),
-            &ntTib,
-            sizeof(NT_TIB32),
+            &ntTib32,
+            sizeof(RTL_FIELD_TYPE(TEB32, NtTib)),
             NULL
             );
+
+        stackBaseAddress = UlongToPtr(ntTib32.StackBase);
+        stackLimitAddress = UlongToPtr(ntTib32.StackLimit);
     }
     else
 #endif
     {
-        status = NtReadVirtualMemory(
+        typeof(RTL_FIELD_TYPE(TEB, NtTib)) ntTib = { 0 };
+
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(basicInfo.TebBaseAddress, UFIELD_OFFSET(TEB, NtTib)),
             &ntTib,
-            sizeof(NT_TIB),
+            sizeof(RTL_FIELD_TYPE(TEB, NtTib)),
             NULL
             );
+
+        stackBaseAddress = ntTib.StackBase;
+        stackLimitAddress = ntTib.StackLimit;
     }
 
     if (NT_SUCCESS(status))
     {
         MEMORY_BASIC_INFORMATION memoryBasicInformation;
-        PVOID stackBaseAddress = NULL;
-        PVOID stackLimitAddress = NULL;
 
-#ifdef _WIN64
-        if (isWow64)
-        {
-            PNT_TIB32 ntTib32 = (PNT_TIB32)&ntTib;
-            stackBaseAddress = UlongToPtr(ntTib32->StackBase);
-            stackLimitAddress = UlongToPtr(ntTib32->StackLimit);
-        }
-        else
-        {
-            stackBaseAddress = ntTib.StackBase;
-            stackLimitAddress = ntTib.StackLimit;
-        }
-#else
-        stackBaseAddress = ntTib.StackBase;
-        stackLimitAddress = ntTib.StackLimit;
-#endif
         memset(&memoryBasicInformation, 0, sizeof(MEMORY_BASIC_INFORMATION));
 
         status = NtQueryVirtualMemory(
@@ -1780,77 +2572,77 @@ NTSTATUS PhGetThreadStackSize(
     return status;
 }
 
+/**
+ * Determines whether a thread has fiber data.
+ *
+ * \param[in] ThreadHandle Thread handle.
+ * \param[in] ProcessHandle Process handle.
+ * \param[out] ThreadIsFiber TRUE if fiber data present.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetThreadIsFiber(
     _In_ HANDLE ThreadHandle,
-    _In_opt_ HANDLE ProcessHandle,
+    _In_ HANDLE ProcessHandle,
     _Out_ PBOOLEAN ThreadIsFiber
     )
 {
     NTSTATUS status;
     THREAD_BASIC_INFORMATION basicInfo;
-    BOOLEAN openedProcessHandle = FALSE;
+    BOOLEAN threadIsFiber;
 #ifdef _WIN64
     BOOLEAN isWow64 = FALSE;
 #endif
-    LONG flags = 0;
 
     if (!NT_SUCCESS(status = PhGetThreadBasicInformation(ThreadHandle, &basicInfo)))
         return status;
-
-    if (!ProcessHandle)
-    {
-        if (!NT_SUCCESS(status = PhOpenProcess(
-            &ProcessHandle,
-            PROCESS_VM_READ | (WindowsVersion > WINDOWS_7 ? PROCESS_QUERY_LIMITED_INFORMATION : PROCESS_QUERY_INFORMATION),
-            basicInfo.ClientId.UniqueProcess
-            )))
-            return status;
-
-        openedProcessHandle = TRUE;
-    }
 
 #ifdef _WIN64
     PhGetProcessIsWow64(ProcessHandle, &isWow64);
 
     if (isWow64)
     {
-        status = NtReadVirtualMemory(
+        typeof(RTL_FIELD_TYPE(TEB32, SameTebFlags)) flags = 0;
+
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(WOW64_GET_TEB32(basicInfo.TebBaseAddress), UFIELD_OFFSET(TEB32, SameTebFlags)),
             &flags,
-            sizeof(USHORT),
+            sizeof(RTL_FIELD_TYPE(TEB32, SameTebFlags)),
             NULL
             );
+
+        threadIsFiber = _bittest((LONG CONST*)&flags, 2); // HasFiberData offset (dmex)
     }
     else
 #endif
     {
-        status = NtReadVirtualMemory(
+        typeof(RTL_FIELD_TYPE(TEB, SameTebFlags)) flags = 0;
+
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(basicInfo.TebBaseAddress, UFIELD_OFFSET(TEB, SameTebFlags)),
             &flags,
-            sizeof(USHORT),
+            sizeof(RTL_FIELD_TYPE(TEB, SameTebFlags)),
             NULL
             );
+
+        threadIsFiber = _bittest((LONG CONST*)&flags, 2); // HasFiberData offset (dmex)
     }
 
     if (NT_SUCCESS(status))
     {
-        *ThreadIsFiber = _bittest(&flags, 2); // HasFiberData offset (dmex)
+        *ThreadIsFiber = threadIsFiber;
     }
-
-    if (openedProcessHandle)
-        NtClose(ProcessHandle);
 
     return status;
 }
 
 // rev from SwitchToThread (dmex)
 /**
- * Causes the calling thread to yield execution to another thread that is ready to run on the current processor. The operating system selects the next thread to be executed.
+ * Causes the calling thread to yield execution to another thread that is ready to run on the
+ * current processor. The operating system selects the next thread to be executed.
  *
  * \remarks The operating system will not switch execution to another processor, even if that processor is idle or is running a thread of lower priority.
- *
  * \return If calling the SwitchToThread function caused the operating system to switch execution to another thread, the return value is nonzero.
  * \rthere are no other threads ready to execute, the operating system does not switch execution to another thread, and the return value is zero.
  */
@@ -1863,6 +2655,15 @@ BOOLEAN PhSwitchToThread(
     return PhDelayExecutionEx(FALSE, &interval) != STATUS_NO_YIELD_PERFORMED;
 }
 
+/**
+ * Determines runtime library path set (ntdll/kernel32/user32) for a process,
+ * including WOW64/ARM32 variants.
+ *
+ * \param[in] ProcessHandle Process handle.
+ * \param[out] RuntimeLibrary Receives pointer to predefined library set.
+ * \param[out] IsWow64Process TRUE if target is WOW64/alternate architecture.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessRuntimeLibrary(
     _In_ HANDLE ProcessHandle,
     _Out_ PPH_PROCESS_RUNTIME_LIBRARY* RuntimeLibrary,
@@ -1963,27 +2764,141 @@ NTSTATUS PhGetProcessRuntimeLibrary(
 }
 
 /**
- * Causes a process to load a DLL.
+ * Loads the specified module into the process's address space using standard LoadLibraryW provided
+ * by the operating system.
  *
- * \param ProcessHandle A handle to a process. The handle must have
+ * \param[in] ProcessHandle A handle to a process. The handle must have
  * PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_CREATE_THREAD, PROCESS_VM_OPERATION, PROCESS_VM_READ
  * and PROCESS_VM_WRITE access.
- * \param FileName The file name of the DLL to inject.
- * \param LoadDllUsingApcThread Queues an APC (Asynchronous Procedure Call) when calling LoadLibraryW.
- * \param Timeout The timeout, in milliseconds, for the process to load the DLL.
- *
+ * \param[in] FileName The file name of the DLL to inject.
+ * \param[in] Timeout The timeout, in milliseconds, for the process to load the DLL.
+ * \return NTSTATUS Successful or errant status.
  * \remarks If the process does not load the DLL before the timeout expires it may crash. Choose the
  * timeout value carefully.
  */
 NTSTATUS PhLoadDllProcess(
     _In_ HANDLE ProcessHandle,
     _In_ PPH_STRINGREF FileName,
-    _In_ BOOLEAN LoadDllUsingApcThread,
     _In_opt_ ULONG Timeout
     )
 {
     NTSTATUS status;
-    SIZE_T fileNameAllocationSize;
+    PVOID fileNameBaseAddress = NULL;
+    PVOID loadLibraryW = NULL;
+    HANDLE threadHandle = NULL;
+    HANDLE powerRequestHandle = NULL;
+    PPH_PROCESS_RUNTIME_LIBRARY runtimeLibrary;
+
+    if (KphProcessLevel(ProcessHandle) > KphLevelMed)
+    {
+        return STATUS_ACCESS_DENIED;
+    }
+
+    status = PhGetProcessRuntimeLibrary(
+        ProcessHandle,
+        &runtimeLibrary,
+        NULL
+        );
+
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status = PhGetProcedureAddressRemote(
+        ProcessHandle,
+        &runtimeLibrary->Kernel32FileName,
+        "LoadLibraryW",
+        &loadLibraryW,
+        NULL
+        );
+
+    if (!NT_SUCCESS(status))
+        goto CleanupExit;
+
+    status = PhAllocateVirtualMemory(
+        ProcessHandle,
+        &fileNameBaseAddress,
+        FileName->Length + sizeof(UNICODE_NULL),
+        MEM_COMMIT,
+        PAGE_READWRITE
+        );
+
+    if (!NT_SUCCESS(status))
+        goto CleanupExit;
+
+    status = PhWriteVirtualMemory(
+        ProcessHandle,
+        fileNameBaseAddress,
+        FileName->Buffer,
+        FileName->Length + sizeof(UNICODE_NULL),
+        NULL
+        );
+
+    if (!NT_SUCCESS(status))
+        goto CleanupExit;
+
+    if (WindowsVersion >= WINDOWS_8)
+    {
+        status = PhCreateExecutionRequiredRequest(ProcessHandle, &powerRequestHandle);
+
+        if (!NT_SUCCESS(status))
+            goto CleanupExit;
+    }
+
+    status = PhCreateUserThread(
+        ProcessHandle,
+        NULL,
+        THREAD_ALL_ACCESS,
+        0,
+        0,
+        0,
+        0,
+        loadLibraryW,
+        fileNameBaseAddress,
+        &threadHandle,
+        NULL
+        );
+
+    if (!NT_SUCCESS(status))
+        goto CleanupExit;
+
+    status = PhWaitForSingleObject(threadHandle, Timeout);
+
+    if (!NT_SUCCESS(status))
+        goto CleanupExit;
+
+CleanupExit:
+    if (threadHandle)
+        NtClose(threadHandle);
+
+    if (powerRequestHandle)
+        PhDestroyExecutionRequiredRequest(powerRequestHandle);
+
+    if (fileNameBaseAddress)
+        PhFreeVirtualMemory(ProcessHandle, fileNameBaseAddress, MEM_RELEASE);
+
+    return status;
+}
+
+/**
+ * Loads the specified module into the process's address space using standard Asynchronous Procedure Call (APC)
+ * routines provided by the operating system.
+ *
+ * \param[in] ProcessHandle A handle to a process. The handle must have
+ * PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_CREATE_THREAD, PROCESS_VM_OPERATION, PROCESS_VM_READ
+ * and PROCESS_VM_WRITE access.
+ * \param[in] FileName The file name of the DLL to inject.
+ * \param[in]Timeout The timeout, in milliseconds, for the process to load the DLL.
+ * \return NTSTATUS Successful or errant status.
+ * \remarks If the process does not load the DLL before the timeout expires it may crash. Choose the
+ * timeout value carefully.
+ */
+NTSTATUS PhLoadDllProcessApcThread(
+    _In_ HANDLE ProcessHandle,
+    _In_ PPH_STRINGREF FileName,
+    _In_opt_ ULONG Timeout
+    )
+{
+    NTSTATUS status;
     PVOID fileNameBaseAddress = NULL;
     PVOID loadLibraryW = NULL;
     PVOID rtlExitUserThread = NULL;
@@ -2016,26 +2931,21 @@ NTSTATUS PhLoadDllProcess(
     if (!NT_SUCCESS(status))
         goto CleanupExit;
 
-    if (LoadDllUsingApcThread)
-    {
-        status = PhGetProcedureAddressRemote(
-            ProcessHandle,
-            &runtimeLibrary->NtdllFileName,
-            "RtlExitUserThread",
-            &rtlExitUserThread,
-            NULL
-            );
+    status = PhGetProcedureAddressRemote(
+        ProcessHandle,
+        &runtimeLibrary->NtdllFileName,
+        "RtlExitUserThread",
+        &rtlExitUserThread,
+        NULL
+        );
 
-        if (!NT_SUCCESS(status))
-            goto CleanupExit;
-    }
+    if (!NT_SUCCESS(status))
+        goto CleanupExit;
 
-    fileNameAllocationSize = FileName->Length + sizeof(UNICODE_NULL);
-    status = NtAllocateVirtualMemory(
+    status = PhAllocateVirtualMemory(
         ProcessHandle,
         &fileNameBaseAddress,
-        0,
-        &fileNameAllocationSize,
+        FileName->Length + sizeof(UNICODE_NULL),
         MEM_COMMIT,
         PAGE_READWRITE
         );
@@ -2043,7 +2953,7 @@ NTSTATUS PhLoadDllProcess(
     if (!NT_SUCCESS(status))
         goto CleanupExit;
 
-    status = NtWriteVirtualMemory(
+    status = PhWriteVirtualMemory(
         ProcessHandle,
         fileNameBaseAddress,
         FileName->Buffer,
@@ -2062,49 +2972,30 @@ NTSTATUS PhLoadDllProcess(
             goto CleanupExit;
     }
 
-    if (LoadDllUsingApcThread)
-    {
-        status = PhCreateUserThread(
-            ProcessHandle,
-            NULL,
-            THREAD_ALL_ACCESS,
-            THREAD_CREATE_FLAGS_CREATE_SUSPENDED,
-            0,
-            0,
-            0,
-            rtlExitUserThread,
-            LongToPtr(STATUS_SUCCESS),
-            &threadHandle,
-            NULL
-            );
+    status = PhCreateUserThread(
+        ProcessHandle,
+        NULL,
+        THREAD_ALL_ACCESS,
+        THREAD_CREATE_FLAGS_CREATE_SUSPENDED,
+        0,
+        0,
+        0,
+        rtlExitUserThread,
+        LongToPtr(STATUS_SUCCESS),
+        &threadHandle,
+        NULL
+        );
 
-        if (!NT_SUCCESS(status))
-            goto CleanupExit;
+    if (!NT_SUCCESS(status))
+        goto CleanupExit;
 
-        status = NtQueueApcThread(
-            threadHandle,
-            loadLibraryW,
-            fileNameBaseAddress,
-            NULL,
-            NULL
-            );
-    }
-    else
-    {
-        status = PhCreateUserThread(
-            ProcessHandle,
-            NULL,
-            THREAD_ALL_ACCESS,
-            0,
-            0,
-            0,
-            0,
-            loadLibraryW,
-            fileNameBaseAddress,
-            &threadHandle,
-            NULL
-            );
-    }
+    status = NtQueueApcThread(
+        threadHandle,
+        loadLibraryW,
+        fileNameBaseAddress,
+        NULL,
+        NULL
+        );
 
     if (!NT_SUCCESS(status))
         goto CleanupExit;
@@ -2130,11 +3021,12 @@ CleanupExit:
 /**
  * Causes a process to unload a DLL.
  *
- * \param ProcessHandle A handle to a process. The handle must have
+ * \param[in] ProcessHandle A handle to a process. The handle must have
  * PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_CREATE_THREAD, PROCESS_VM_OPERATION, PROCESS_VM_READ
  * and PROCESS_VM_WRITE access.
- * \param BaseAddress The base address of the DLL to unload.
- * \param Timeout The timeout, in milliseconds, for the process to unload the DLL.
+ * \param[in]BaseAddress The base address of the DLL to unload.
+ * \param[in] Timeout The timeout, in milliseconds, for the process to unload the DLL.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhUnloadDllProcess(
     _In_ HANDLE ProcessHandle,
@@ -2245,13 +3137,14 @@ NTSTATUS PhUnloadDllProcess(
 /**
  * Sets an environment variable in a process.
  *
- * \param ProcessHandle A handle to a process. The handle must have
+ * \param[in] ProcessHandle A handle to a process. The handle must have
  * PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_CREATE_THREAD, PROCESS_VM_OPERATION, PROCESS_VM_READ
  * and PROCESS_VM_WRITE access.
- * \param Name The name of the environment variable to set.
- * \param Value The new value of the environment variable. If this parameter is NULL, the
+ * \param[in] Name The name of the environment variable to set.
+ * \param[in] Value The new value of the environment variable. If this parameter is NULL, the
  * environment variable is deleted.
- * \param Timeout The timeout, in milliseconds, for the process to set the environment variable.
+ * \param[in] Timeout The timeout, in milliseconds, for the process to set the environment variable.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhSetEnvironmentVariableRemote(
     _In_ HANDLE ProcessHandle,
@@ -2315,11 +3208,10 @@ NTSTATUS PhSetEnvironmentVariableRemote(
     if (!NT_SUCCESS(status))
         goto CleanupExit;
 
-    status = NtAllocateVirtualMemory(
+    status = PhAllocateVirtualMemory(
         ProcessHandle,
         &nameBaseAddress,
-        0,
-        &nameAllocationSize,
+        nameAllocationSize,
         MEM_COMMIT,
         PAGE_READWRITE
         );
@@ -2327,7 +3219,7 @@ NTSTATUS PhSetEnvironmentVariableRemote(
     if (!NT_SUCCESS(status))
         goto CleanupExit;
 
-    status = NtWriteVirtualMemory(
+    status = PhWriteVirtualMemory(
         ProcessHandle,
         nameBaseAddress,
         Name->Buffer,
@@ -2340,11 +3232,10 @@ NTSTATUS PhSetEnvironmentVariableRemote(
 
     if (Value)
     {
-        status = NtAllocateVirtualMemory(
+        status = PhAllocateVirtualMemory(
             ProcessHandle,
             &valueBaseAddress,
-            0,
-            &valueAllocationSize,
+            valueAllocationSize,
             MEM_COMMIT,
             PAGE_READWRITE
             );
@@ -2352,7 +3243,7 @@ NTSTATUS PhSetEnvironmentVariableRemote(
         if (!NT_SUCCESS(status))
             goto CleanupExit;
 
-        status = NtWriteVirtualMemory(
+        status = PhWriteVirtualMemory(
             ProcessHandle,
             valueBaseAddress,
             Value->Buffer,
@@ -2471,6 +3362,18 @@ CleanupExit:
 }
 
 // based on https://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547 (dmex)
+/**
+ * Safe process termination via remote RtlExitUserProcess in the context of the remote process.
+ *
+ * \param[in] ProcessHandle A handle to the process to be terminated.
+ * \param[in] ExitStatus The exit status code to be used when terminating the process.
+ * \param[in] Timeout Optional. The timeout, in milliseconds, to wait for the termination thread to complete.
+ * If NULL, the function will wait indefinitely.
+ * \return NTSTATUS Successful or errant status.
+ * \remarks This function attempts to terminate the specified process by creating a remote thread
+ * that calls RtlExitUserProcess. On Windows 8 and later, it creates an execution required power request
+ * to prevent deadlocks during the termination operation. The function cleans up any handles it creates before returning.
+ */
 NTSTATUS PhTerminateProcessAlternative(
     _In_ HANDLE ProcessHandle,
     _In_ NTSTATUS ExitStatus,
@@ -2551,8 +3454,7 @@ CleanupExit:
  * \param[in] ProcessHandle A handle to the process. The handle must have
  * PROCESS_QUERY_LIMITED_INFORMATION and PROCESS_VM_READ access.
  * \param[out] SystemDllInitBlock A buffer for a version-independent copy of LdrSystemDllInitBlock.
- *
- * \return Successful or errant status.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetProcessSystemDllInitBlock(
     _In_ HANDLE ProcessHandle,
@@ -2596,7 +3498,7 @@ NTSTATUS PhGetProcessSystemDllInitBlock(
     if (!NT_SUCCESS(status))
         return status;
 
-    status = NtReadVirtualMemory(
+    status = PhReadVirtualMemory(
         ProcessHandle,
         ldrSystemDllInitBlockAddress,
         &systemDllInitBlock,
@@ -2618,6 +3520,74 @@ NTSTATUS PhGetProcessSystemDllInitBlock(
     return status;
 }
 
+/**
+ * Retrieves the CrossProcessFlags from the target process's PEB (Process Environment Block).
+ *
+ * \param[in] ProcessHandle Handle to the process whose cross-process flags are to be retrieved.
+ * \param[in] ProcessFlags Pointer to a ULONG variable that receives the cross-process flags.
+ * \return NTSTATUS Successful or errant status.
+ */
+NTSTATUS PhGetProcessCrossProcessFlags(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PULONG ProcessFlags
+    )
+{
+    NTSTATUS status;
+    ULONG crossProcessFlags = 0;
+    PVOID pebBaseAddress;
+#ifdef _WIN64
+    BOOLEAN isWow64 = FALSE;
+
+    PhGetProcessIsWow64(ProcessHandle, &isWow64);
+
+    if (isWow64)
+    {
+        status = PhGetProcessPeb32(ProcessHandle, &pebBaseAddress);
+
+        if (!NT_SUCCESS(status))
+            goto CleanupExit;
+
+        status = PhReadVirtualMemory(
+            ProcessHandle,
+            PTR_ADD_OFFSET(pebBaseAddress, UFIELD_OFFSET(PEB32, CrossProcessFlags)),
+            &crossProcessFlags,
+            sizeof(ULONG),
+            NULL
+            );
+    }
+    else
+#endif
+    {
+        status = PhGetProcessPeb(ProcessHandle, &pebBaseAddress);
+
+        if (!NT_SUCCESS(status))
+            goto CleanupExit;
+
+        status = PhReadVirtualMemory(
+            ProcessHandle,
+            PTR_ADD_OFFSET(pebBaseAddress, UFIELD_OFFSET(PEB, CrossProcessFlags)),
+            &crossProcessFlags,
+            sizeof(ULONG),
+            NULL
+            );
+    }
+
+    if (NT_SUCCESS(status))
+    {
+        *ProcessFlags = crossProcessFlags;
+    }
+
+CleanupExit:
+    return status;
+}
+
+/**
+ * Retrieves the active ANSI code page of a process (PEB ActiveCodePage or ntdll variable).
+ *
+ * \param[in] ProcessHandle Process handle.
+ * \param[out] ProcessCodePage Receives code page ID.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessCodePage(
     _In_ HANDLE ProcessHandle,
     _Out_ PUSHORT ProcessCodePage
@@ -2641,7 +3611,7 @@ NTSTATUS PhGetProcessCodePage(
             if (!NT_SUCCESS(status))
                 goto CleanupExit;
 
-            status = NtReadVirtualMemory(
+            status = PhReadVirtualMemory(
                 ProcessHandle,
                 PTR_ADD_OFFSET(pebBaseAddress, UFIELD_OFFSET(PEB32, ActiveCodePage)),
                 &codePage,
@@ -2657,7 +3627,7 @@ NTSTATUS PhGetProcessCodePage(
             if (!NT_SUCCESS(status))
                 goto CleanupExit;
 
-            status = NtReadVirtualMemory(
+            status = PhReadVirtualMemory(
                 ProcessHandle,
                 PTR_ADD_OFFSET(pebBaseAddress, UFIELD_OFFSET(PEB, ActiveCodePage)),
                 &codePage,
@@ -2691,7 +3661,7 @@ NTSTATUS PhGetProcessCodePage(
         if (!NT_SUCCESS(status))
             goto CleanupExit;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             nlsAnsiCodePage,
             &codePage,
@@ -2709,6 +3679,14 @@ CleanupExit:
     return status;
 }
 
+/**
+ * Executes GetConsoleCP or GetConsoleOutputCP inside remote process and returns its code page.
+ *
+ * \param[in] ProcessHandle Target process.
+ * \param[in] ConsoleOutputCP TRUE for output, FALSE for input code page.
+ * \param[out] ConsoleCodePage Receives code page.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessConsoleCodePage(
     _In_ HANDLE ProcessHandle,
     _In_ BOOLEAN ConsoleOutputCP,
@@ -2793,6 +3771,14 @@ CleanupExit:
     return status;
 }
 
+/**
+ * Flushes remote process heaps by invoking RtlFlushHeaps through a queued APC.
+ *
+ * \param[in] ProcessHandle Target process.
+ * \param[in] Timeout Optional timeout.
+ * \return NTSTATUS Successful or errant status.
+ * \remarks Uses suspended thread with queued APC; waits for completion (5s).
+ */
 NTSTATUS PhFlushProcessHeapsRemote(
     _In_ HANDLE ProcessHandle,
     _In_opt_ PLARGE_INTEGER Timeout
@@ -2929,20 +3915,19 @@ CleanupExit:
     return status;
 }
 
-/*
+/**
  * Invokes a procedure in the context of the owning thread for the window.
  *
- * \param WindowHandle The handle of the window.
- * \param ApcRoutine The procedure to be invoked.
- * \param ApcArgument1 The first argument to be passed to the procedure.
- * \param ApcArgument2 The second argument to be passed to the procedure.
- * \param ApcArgument3 The third argument to be passed to the procedure.
- *
- * \return The status of the operation.
+ * \param[in] WindowHandle The handle of the window.
+ * \param[in] ApcRoutine The procedure to be invoked.
+ * \param[in] ApcArgument1 The first argument to be passed to the procedure.
+ * \param[in] ApcArgument2 The second argument to be passed to the procedure.
+ * \param[in] ApcArgument3 The third argument to be passed to the procedure.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhInvokeWindowProcedureRemote(
     _In_ HWND WindowHandle,
-    _In_ PVOID ApcRoutine,
+    _In_ PPS_APC_ROUTINE ApcRoutine,
     _In_opt_ PVOID ApcArgument1,
     _In_opt_ PVOID ApcArgument2,
     _In_opt_ PVOID ApcArgument3
@@ -3018,11 +4003,9 @@ CleanupExit:
 /**
  * Destroys the specified window in a process.
  *
- * \param ProcessHandle A handle to a process. The handle must have PROCESS_SET_LIMITED_INFORMATION access.
- * \param WindowHandle A handle to the window to be destroyed.
- *
- * \return Successful or errant status.
- *
+ * \param[in] ProcessHandle A handle to a process. The handle must have PROCESS_SET_LIMITED_INFORMATION access.
+ * \param[in] WindowHandle A handle to the window to be destroyed.
+ * \return NTSTATUS Successful or errant status.
  * \remarks A thread cannot call DestroyWindow for a window created by a different thread,
  * unless we queue a special APC to the owner thread.
  */
@@ -3067,6 +4050,13 @@ CleanupExit:
     return status;
 }
 
+/**
+ * Posts WM_QUIT (exit code) to a window's message loop via PostQuitMessage in remote context.
+ *
+ * \param[in] ProcessHandle Process handle.
+ * \param[in] WindowHandle Window handle.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhPostWindowQuitMessageRemote(
     _In_ HANDLE ProcessHandle,
     _In_ HWND WindowHandle
@@ -3108,7 +4098,14 @@ CleanupExit:
     return status;
 }
 
-/// https://learn.microsoft.com/en-us/windows/win32/multimedia/obtaining-and-setting-timer-resolution
+// https://learn.microsoft.com/en-us/windows/win32/multimedia/obtaining-and-setting-timer-resolution
+/**
+ * Sets process timer resolution (TimeBeginPeriod) via remote APC invocation.
+ *
+ * \param[in] ProcessHandle Process handle.
+ * \param[in] Period Requested timer resolution in ms.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetProcessTimerResolutionRemote(
     _In_ HANDLE ProcessHandle,
     _In_ ULONG Period
@@ -3237,6 +4234,13 @@ CleanupExit:
     return status;
 }
 
+/**
+ * Alternate variant for setting timer resolution (same semantics as PhSetProcessTimerResolutionRemote).
+ *
+ * \param[in] ProcessHandle Process handle.
+ * \param[in] Period Requested period.
+ * \returns NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetProcessTimerResolutionRemote2(
     _In_ HANDLE ProcessHandle,
     _In_ ULONG Period
@@ -3364,6 +4368,16 @@ CleanupExit:
     return status;
 }
 
+/**
+ * Sets handle flags (e.g. HANDLE_FLAG_INHERIT, HANDLE_FLAG_PROTECT_FROM_CLOSE) in a remote process.
+ *
+ * \param[in] ProcessHandle Target process.
+ * \param[in] RemoteHandle Handle value in remote process.
+ * \param[in] Mask Bitmask of flags to modify.
+ * \param[in] Flags New flag values.
+ * \return NTSTATUS Successful or errant status.
+ * \remarks Invokes SetHandleInformation via APC onto suspended thread.
+ */
 NTSTATUS PhSetHandleInformationRemote(
     _In_ HANDLE ProcessHandle,
     _In_ HANDLE RemoteHandle,

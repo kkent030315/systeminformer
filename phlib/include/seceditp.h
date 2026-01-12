@@ -18,13 +18,18 @@ typedef enum _PH_SE_OBJECT_TYPE
     PH_SE_DEFAULT_OBJECT_TYPE,
 
     // System objects
+    PH_SE_ALPC_OBJECT_TYPE,
     PH_SE_FILE_OBJECT_TYPE,
+    PH_SE_RDP_OBJECT_TYPE,
     PH_SE_SERVICE_OBJECT_TYPE,
     PH_SE_LSA_OBJECT_TYPE,
     PH_SE_SAM_OBJECT_TYPE,
 
     PH_SE_KEY_OBJECT,
     PH_SE_KERNEL_OBJECT,
+    PH_SE_PROCESS_OBJECT_TYPE,
+    PH_SE_THREAD_OBJECT_TYPE,
+
     PH_SE_WINDOW_OBJECT,
     PH_SE_WMIGUID_OBJECT,
     // ...
@@ -34,6 +39,8 @@ typedef enum _PH_SE_OBJECT_TYPE
     PH_SE_POWERDEF_OBJECT_TYPE,
     PH_SE_RDPDEF_OBJECT_TYPE,
     PH_SE_WMIDEF_OBJECT_TYPE,
+    PH_SE_COMACCESSDEF_OBJECT_TYPE,
+    PH_SE_COMLAUNCHDEF_OBJECT_TYPE,
     // ...
 
 } PH_SE_OBJECT_TYPE;
@@ -105,15 +112,28 @@ typedef struct
 #define INTERFACE   ISecurityObjectTypeInfoEx
 DECLARE_INTERFACE_IID_(ISecurityObjectTypeInfoEx, IUnknown, "FC3066EB-79EF-444b-9111-D18A75EBF2FA")
 {
+    BEGIN_INTERFACE
+
     // *** IUnknown methods ***
+
+    DECLSPEC_XFGVIRT(ISecurityObjectTypeInfoEx, QueryInterface)
     STDMETHOD(QueryInterface) (THIS_ _In_ REFIID riid, _Outptr_ void** ppvObj) PURE;
+
+    DECLSPEC_XFGVIRT(ISecurityObjectTypeInfoEx, AddRef)
     STDMETHOD_(ULONG, AddRef) (THIS)  PURE;
+
+    DECLSPEC_XFGVIRT(ISecurityObjectTypeInfoEx, Release)
     STDMETHOD_(ULONG, Release) (THIS) PURE;
 
     // *** ISecurityInformation methods ***
-    STDMETHOD(GetInheritSource)(THIS_ SECURITY_INFORMATION si,
-        PACL pACL,
-        PINHERITED_FROM * ppInheritArray) PURE;
+    DECLSPEC_XFGVIRT(ISecurityObjectTypeInfoEx, GetInheritSource)
+    STDMETHOD(GetInheritSource)(THIS_
+        _In_ SECURITY_INFORMATION si,
+        _In_ PACL pACL,
+        _In_ PINHERITED_FROM* ppInheritArray
+        ) PURE;
+
+    END_INTERFACE
 };
 typedef ISecurityObjectTypeInfoEx* LPSecurityObjectTypeInfoEx;
 
@@ -246,7 +266,7 @@ ULONG STDMETHODCALLTYPE PhSecurityInformation3_Release(
 
 HRESULT STDMETHODCALLTYPE PhSecurityInformation3_GetFullResourceName(
     _In_ ISecurityInformation3 *This,
-    _Outptr_ PCWSTR *ppszResourceName
+    _Outptr_ PWSTR *ResourceName
     );
 
 HRESULT STDMETHODCALLTYPE PhSecurityInformation3_OpenElevatedEditor(

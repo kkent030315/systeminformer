@@ -22,6 +22,7 @@ INT_PTR CALLBACK GraphicsDeviceNodesDlgProc(
     _In_ LPARAM lParam
     );
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS EtpGpuNodesDialogThreadStart(
     _In_ PDV_GPU_SYSINFO_CONTEXT Context
     )
@@ -229,7 +230,7 @@ INT_PTR CALLBACK GraphicsDeviceNodesDlgProc(
             }
 
             // Note: This dialog must be centered after all other graphs and controls have been added.
-            if (PhGetIntegerPairSetting(SETTING_NAME_GRAPHICS_NODES_WINDOW_POSITION).X != 0)
+            if (PhValidWindowPlacementFromSetting(SETTING_NAME_GRAPHICS_NODES_WINDOW_POSITION))
                 PhLoadWindowPlacementFromSetting(SETTING_NAME_GRAPHICS_NODES_WINDOW_POSITION, SETTING_NAME_GRAPHICS_NODES_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, NULL);
@@ -241,7 +242,7 @@ INT_PTR CALLBACK GraphicsDeviceNodesDlgProc(
                 &context->ProcessesUpdatedCallbackRegistration
                 );
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     case WM_DESTROY:
@@ -312,7 +313,7 @@ INT_PTR CALLBACK GraphicsDeviceNodesDlgProc(
 
             deferHandle = BeginDeferWindowPos(context->NumberOfNodes);
 
-            GetClientRect(hwndDlg, &clientRect);
+            PhGetClientRect(hwndDlg, &clientRect);
             cellHeight = (clientRect.bottom - context->LayoutMargin.top - context->LayoutMargin.bottom - GRAPH_PADDING * numberOfYPaddings) / numberOfRows;
             y = context->LayoutMargin.top;
             i = 0;
@@ -392,7 +393,7 @@ INT_PTR CALLBACK GraphicsDeviceNodesDlgProc(
 
                     dpiValue = PhGetWindowDpi(context->WindowHandle);
                     drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (GraphicsEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-                    PhSiSetColorsGraphDrawInfo(drawInfo, PhGetIntegerSetting(L"ColorCpuKernel"), 0, dpiValue);
+                    PhSiSetColorsGraphDrawInfo(drawInfo, PhGetIntegerSetting(SETTING_COLOR_CPU_KERNEL), 0, dpiValue);
 
                     for (i = 0; i < context->NumberOfNodes; i++)
                     {

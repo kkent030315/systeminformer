@@ -35,6 +35,7 @@ static HANDLE EtNpuNodesThreadHandle = NULL;
 static HWND EtNpuNodesWindowHandle = NULL;
 static PH_EVENT EtNpuNodesInitializedEvent = PH_EVENT_INIT;
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS EtpNpuNodesDialogThreadStart(
     _In_ PVOID Parameter
     )
@@ -165,7 +166,7 @@ INT_PTR CALLBACK EtpNpuNodesDlgProc(
             SetWindowPos(hwndDlg, NULL, 0, 0, MinimumSize.right, MinimumSize.bottom, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER);
 
             // Note: This dialog must be centered after all other graphs and controls have been added.
-            if (PhGetIntegerPairSetting(SETTING_NAME_NPU_NODES_WINDOW_POSITION).X != 0)
+            if (PhValidWindowPlacementFromSetting(SETTING_NAME_NPU_NODES_WINDOW_POSITION))
                 PhLoadWindowPlacementFromSetting(SETTING_NAME_NPU_NODES_WINDOW_POSITION, SETTING_NAME_NPU_NODES_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, (HWND)lParam);
@@ -177,7 +178,7 @@ INT_PTR CALLBACK EtpNpuNodesDlgProc(
                 &ProcessesUpdatedCallbackRegistration
                 );
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     case WM_DESTROY:
@@ -223,7 +224,7 @@ INT_PTR CALLBACK EtpNpuNodesDlgProc(
 
             deferHandle = BeginDeferWindowPos(EtNpuTotalNodeCount);
 
-            GetClientRect(hwndDlg, &clientRect);
+            PhGetClientRect(hwndDlg, &clientRect);
             cellHeight = (clientRect.bottom - LayoutMargin.top - LayoutMargin.bottom - GRAPH_PADDING * numberOfYPaddings) / numberOfRows;
             y = LayoutMargin.top;
             i = 0;
@@ -307,7 +308,7 @@ INT_PTR CALLBACK EtpNpuNodesDlgProc(
                     PhGetSizeDpiValue(&padding, dpiValue, TRUE);
 
                     drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (EtEnableScaleGraph ? PH_GRAPH_LABEL_MAX_Y : 0);
-                    PhSiSetColorsGraphDrawInfo(drawInfo, PhGetIntegerSetting(L"ColorCpuKernel"), 0, dpiValue);
+                    PhSiSetColorsGraphDrawInfo(drawInfo, PhGetIntegerSetting(SETTING_COLOR_CPU_KERNEL), 0, dpiValue);
 
                     for (i = 0; i < EtNpuTotalNodeCount; i++)
                     {

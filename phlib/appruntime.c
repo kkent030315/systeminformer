@@ -28,9 +28,9 @@ static_assert(sizeof(HSTRING_REFERENCE) == sizeof(WSTRING_HEADER), "HSTRING_REFE
 /**
  * Creates a string from a Windows Runtime string.
  *
- * @param String The Windows Runtime string.
+ * \param String The Windows Runtime string.
  *
- * @return A pointer to the created string.
+ * \return A pointer to the created string.
  */
 PPH_STRING PhCreateStringFromWindowsRuntimeString(
     _In_ HSTRING String
@@ -725,6 +725,7 @@ CleanupExit:
     return status;
 }
 
+_Function_class_(PH_ENUM_NEXT_THREAD)
 static NTSTATUS NTAPI PhEnumNextThreadSystemIdentification(
     _In_ HANDLE ThreadHandle,
     _Inout_ HANDLE* Context
@@ -915,9 +916,9 @@ DEFINE_GUID(IID_IAppInfo, 0xcf7f59b3, 0x6a09, 0x4de8, 0xa6, 0xc0, 0x57, 0x92, 0x
 // 4207a996-ca2f-42f7-bde8-8b10457a7f30
 DEFINE_GUID(IID_IStorageItem, 0x4207a996, 0xca2f, 0x42f7, 0xbd, 0xe8, 0x8b, 0x10, 0x45, 0x7a, 0x7f, 0x30);
 
-static __typeof__(&OpenPackageInfoByFullNameForUser) OpenPackageInfoByFullNameForUser_I = NULL;
-static __typeof__(&GetPackageApplicationIds) GetPackageApplicationIds_I = NULL;
-static __typeof__(&ClosePackageInfo) ClosePackageInfo_I = NULL;
+static typeof(&OpenPackageInfoByFullNameForUser) OpenPackageInfoByFullNameForUser_I = NULL;
+static typeof(&GetPackageApplicationIds) GetPackageApplicationIds_I = NULL;
+static typeof(&ClosePackageInfo) ClosePackageInfo_I = NULL;
 
 static BOOLEAN PhPackageImportsInitialized(
     VOID

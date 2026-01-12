@@ -12,12 +12,11 @@
 
 #include <phapp.h>
 #include <emenu.h>
-
 #include <mainwnd.h>
 #include <memsrch.h>
 #include <procprv.h>
 #include <settings.h>
-
+#include <phsettings.h>
 #include <thirdparty.h>
 
 #define FILTER_CONTAINS 1
@@ -96,7 +95,7 @@ static VOID FilterResults(
         PH_CHOICE_DIALOG_USER_CHOICE,
         &selectedChoice,
         NULL,
-        L"MemFilterChoices"
+        SETTING_MEM_FILTER_CHOICES
         ))
     {
         PPH_LIST newResults = NULL;
@@ -253,26 +252,22 @@ INT_PTR CALLBACK PhpMemoryResultsDlgProc(
             }
 
             lvHandle = GetDlgItem(hwndDlg, IDC_LIST);
-            PhSetListViewStyle(lvHandle, FALSE, TRUE);
+            PhSetListViewStyle(lvHandle, TRUE, TRUE);
             PhSetControlTheme(lvHandle, L"explorer");
             PhAddListViewColumn(lvHandle, 0, 0, 0, LVCFMT_LEFT, 120, L"Address");
             PhAddListViewColumn(lvHandle, 1, 1, 1, LVCFMT_LEFT, 120, L"Base Address");
             PhAddListViewColumn(lvHandle, 2, 2, 2, LVCFMT_LEFT, 80, L"Length");
             PhAddListViewColumn(lvHandle, 3, 3, 3, LVCFMT_LEFT, 200, L"Result");
+            PhSetExtendedListView(lvHandle);
 
-            PhLoadListViewColumnsFromSetting(L"MemResultsListViewColumns", lvHandle);
+            PhLoadListViewColumnsFromSetting(SETTING_MEM_RESULTS_LIST_VIEW_COLUMNS, lvHandle);
 
             PhInitializeLayoutManager(&context->LayoutManager, hwndDlg);
-            PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDC_LIST), NULL,
-                PH_ANCHOR_ALL);
-            PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDOK), NULL,
-                PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM);
-            PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDC_COPY), NULL,
-                PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM);
-            PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDC_SAVE), NULL,
-                PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM);
-            PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDC_FILTER), NULL,
-                PH_ANCHOR_BOTTOM | PH_ANCHOR_LEFT);
+            PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDC_LIST), NULL, PH_ANCHOR_ALL);
+            PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDOK), NULL, PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM);
+            PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDC_COPY), NULL, PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM);
+            PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDC_SAVE), NULL, PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM);
+            PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDC_FILTER), NULL, PH_ANCHOR_BOTTOM | PH_ANCHOR_LEFT);
 
             if (MinimumSize.left == -1)
             {
@@ -297,10 +292,10 @@ INT_PTR CALLBACK PhpMemoryResultsDlgProc(
                 RECT rect;
                 LONG dpiValue;
 
-                windowRectangle.Position = PhGetIntegerPairSetting(L"MemResultsPosition");
+                windowRectangle.Position = PhGetIntegerPairSetting(SETTING_MEM_RESULTS_POSITION);
                 PhRectangleToRect(&rect, &windowRectangle);
-                dpiValue = PhGetMonitorDpi(&rect);
-                windowRectangle.Size = PhGetScalableIntegerPairSetting(L"MemResultsSize", TRUE, dpiValue)->Pair;
+                dpiValue = PhGetMonitorDpi(NULL, &rect);
+                windowRectangle.Size = PhGetScalableIntegerPairSetting(SETTING_MEM_RESULTS_SIZE, TRUE, dpiValue)->Pair;
                 PhAdjustRectangleToWorkingArea(NULL, &windowRectangle);
 
                 MoveWindow(hwndDlg, windowRectangle.Left, windowRectangle.Top,
@@ -310,8 +305,8 @@ INT_PTR CALLBACK PhpMemoryResultsDlgProc(
                 windowRectangle.Left += 20;
                 windowRectangle.Top += 20;
 
-                PhSetIntegerPairSetting(L"MemResultsPosition", windowRectangle.Position);
-                PhSetScalableIntegerPairSetting2(L"MemResultsSize", windowRectangle.Size, dpiValue);
+                PhSetIntegerPairSetting(SETTING_MEM_RESULTS_POSITION, windowRectangle.Position);
+                PhSetScalableIntegerPairSetting2(SETTING_MEM_RESULTS_SIZE, windowRectangle.Size, dpiValue);
             }
 
             PhInitializeWindowTheme(hwndDlg, PhEnableThemeSupport);
@@ -319,8 +314,8 @@ INT_PTR CALLBACK PhpMemoryResultsDlgProc(
         break;
     case WM_DESTROY:
         {
-            PhSaveWindowPlacementToSetting(L"MemResultsPosition", L"MemResultsSize", hwndDlg);
-            PhSaveListViewColumnsToSetting(L"MemResultsListViewColumns", GetDlgItem(hwndDlg, IDC_LIST));
+            PhSaveWindowPlacementToSetting(SETTING_MEM_RESULTS_POSITION, SETTING_MEM_RESULTS_SIZE, hwndDlg);
+            PhSaveListViewColumnsToSetting(SETTING_MEM_RESULTS_LIST_VIEW_COLUMNS, GetDlgItem(hwndDlg, IDC_LIST));
 
             PhDeleteLayoutManager(&context->LayoutManager);
             PhUnregisterDialog(hwndDlg);
@@ -375,7 +370,6 @@ INT_PTR CALLBACK PhpMemoryResultsDlgProc(
                     PVOID fileDialog;
 
                     fileDialog = PhCreateSaveFileDialog();
-
                     PhSetFileDialogFilter(fileDialog, filters, sizeof(filters) / sizeof(PH_FILETYPE_FILTER));
                     PhSetFileDialogFileName(fileDialog, L"Search results.txt");
 
@@ -428,7 +422,9 @@ INT_PTR CALLBACK PhpMemoryResultsDlgProc(
                     PhInsertEMenuItem(menu, PhCreateEMenuItem(0, ID_FILTER_REGEX, L"Regex...", NULL, NULL), ULONG_MAX);
                     PhInsertEMenuItem(menu, PhCreateEMenuItem(0, ID_FILTER_REGEX_CASEINSENSITIVE, L"Regex (case-insensitive)...", NULL, NULL), ULONG_MAX);
 
-                    GetClientRect(GetDlgItem(hwndDlg, IDC_FILTER), &buttonRect);
+                    if (!PhGetClientRect(GetDlgItem(hwndDlg, IDC_FILTER), &buttonRect))
+                        break;
+
                     point.x = 0;
                     point.y = buttonRect.bottom;
 
@@ -541,7 +537,7 @@ INT_PTR CALLBACK PhpMemoryResultsDlgProc(
                     {
                         INT index;
 
-                        if ((index = PhFindListViewItemByFlags(lvHandle, -1, LVNI_SELECTED)) != -1)
+                        if ((index = PhFindListViewItemByFlags(lvHandle, INT_ERROR, LVNI_SELECTED)) != INT_ERROR)
                         {
                             NTSTATUS status;
                             PPH_MEMORY_RESULT result = context->Results->Items[index];
@@ -587,9 +583,12 @@ INT_PTR CALLBACK PhpMemoryResultsDlgProc(
                 {
                     if (header->hwndFrom == lvHandle)
                     {
-                        POINT point;
+                        POINT position;
                         PPH_EMENU menu;
                         PPH_EMENU_ITEM selectedItem;
+
+                        if (!PhGetMessagePos(&position))
+                            break;
 
                         menu = PhCreateEMenu();
                         PhInsertEMenuItem(menu, PhCreateEMenuItem(0, ID_MEMORY_READWRITEMEMORY, L"Read/Write memory", NULL, NULL), ULONG_MAX);
@@ -597,15 +596,13 @@ INT_PTR CALLBACK PhpMemoryResultsDlgProc(
                         PhInsertEMenuItem(menu, PhCreateEMenuItem(0, IDC_COPY, L"Copy", NULL, NULL), ULONG_MAX);
                         PhInsertCopyListViewEMenuItem(menu, IDC_COPY, lvHandle);
 
-                        GetCursorPos(&point);
-
                         selectedItem = PhShowEMenu(
                             menu,
                             hwndDlg,
                             PH_EMENU_SHOW_LEFTRIGHT,
                             PH_ALIGN_LEFT | PH_ALIGN_TOP,
-                            point.x,
-                            point.y
+                            position.x,
+                            position.y
                             );
 
                         if (selectedItem)
@@ -618,7 +615,7 @@ INT_PTR CALLBACK PhpMemoryResultsDlgProc(
                                     {
                                         INT index;
 
-                                        if ((index = PhFindListViewItemByFlags(lvHandle, -1, LVNI_SELECTED)) != -1)
+                                        if ((index = PhFindListViewItemByFlags(lvHandle, INT_ERROR, LVNI_SELECTED)) != INT_ERROR)
                                         {
                                             NTSTATUS status;
                                             PPH_MEMORY_RESULT result = context->Results->Items[index];
@@ -692,6 +689,12 @@ INT_PTR CALLBACK PhpMemoryResultsDlgProc(
                 }
                 break;
             }
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&context->LayoutManager);
         }
         break;
     case WM_SIZE:

@@ -36,6 +36,7 @@
 
 extern HWND PhSipWindow;
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS PhSipSysInfoThreadStart(
     _In_ PVOID Parameter
     );
@@ -140,6 +141,7 @@ VOID PhSipUpdateColorParameters(
     VOID
     );
 
+_Function_class_(PH_SYSINFO_CREATE_SECTION)
 PPH_SYSINFO_SECTION PhSipCreateSection(
     _In_ PPH_SYSINFO_SECTION Template
     );
@@ -148,6 +150,7 @@ VOID PhSipDestroySection(
     _In_ PPH_SYSINFO_SECTION Section
     );
 
+_Function_class_(PH_SYSINFO_FIND_SECTION)
 PPH_SYSINFO_SECTION PhSipFindSection(
     _In_ PPH_STRINGREF Name
     );
@@ -185,6 +188,7 @@ VOID PhSipLayoutSectionView(
     VOID
     );
 
+_Function_class_(PH_SYSINFO_ENTER_SECTION_VIEW)
 VOID PhSipEnterSectionView(
     _In_ PPH_SYSINFO_SECTION NewSection
     );
@@ -196,6 +200,7 @@ VOID PhSipEnterSectionViewInner(
     _Inout_ HDWP *ContainerDeferHandle
     );
 
+_Function_class_(PH_SYSINFO_RESTORE_SUMMARY_VIEW)
 VOID PhSipRestoreSummaryView(
     VOID
     );
@@ -239,6 +244,14 @@ VOID PhSipUpdateProcessorFrequency(
     VOID
     );
 
+VOID PhSipUpdateTimerResolution(
+    VOID
+    );
+
+VOID PhSipUpdateProcessorPerformanceDistribution(
+    VOID
+    );
+
 VOID PhSipUpdateThemeData(
     VOID
     );
@@ -261,6 +274,7 @@ VOID NTAPI PhSipSysInfoSettingsCallback(
 
 // CPU section
 
+_Function_class_(PH_SYSINFO_SECTION_CALLBACK)
 BOOLEAN PhSipCpuSectionCallback(
     _In_ PPH_SYSINFO_SECTION Section,
     _In_ PH_SYSINFO_SECTION_MESSAGE Message,
@@ -306,6 +320,7 @@ VOID PhSipSetOneGraphPerCpu(
     VOID
     );
 
+_Function_class_(PH_GRAPH_MESSAGE_CALLBACK)
 BOOLEAN NTAPI PhSipCpuGraphCallback(
     _In_ HWND GraphHandle,
     _In_ ULONG GraphMessage,
@@ -339,19 +354,6 @@ BOOLEAN PhSipGetCpuFrequencyFromDistribution(
     _Out_ DOUBLE *Frequency
     );
 
-NTSTATUS PhSipQueryProcessorPerformanceDistribution(
-    _Out_ PVOID *Buffer
-    );
-
-NTSTATUS PhSipQueryProcessorPerformanceDistributionEx(
-    _In_ USHORT ProcessorGroup,
-    _Out_ PVOID* Buffer
-    );
-
-NTSTATUS PhSipQueryCpuSetInformation(
-    _Out_ PVOID* Buffer
-    );
-
 PCPH_STRINGREF PhGetHybridProcessorType(
     _In_ ULONG ProcessorIndex
     );
@@ -360,8 +362,14 @@ BOOLEAN PhIsCoreParked(
     _In_ ULONG ProcessorIndex
     );
 
+_Function_class_(USER_THREAD_START_ROUTINE)
+NTSTATUS NTAPI PhSipCpuSMBIOSWorkRoutine(
+    _In_ PVOID ThreadParameter
+    );
+
 // Memory section
 
+_Function_class_(PH_SYSINFO_SECTION_CALLBACK)
 BOOLEAN PhSipMemorySectionCallback(
     _In_ PPH_SYSINFO_SECTION Section,
     _In_ PH_SYSINFO_SECTION_MESSAGE Message,
@@ -403,6 +411,7 @@ VOID PhSipLayoutMemoryGraphs(
     _In_ HWND hwnd
     );
 
+_Function_class_(PH_GRAPH_MESSAGE_CALLBACK)
 BOOLEAN NTAPI PhSipNotifyCommitGraph(
     _In_ HWND GraphHandle,
     _In_ ULONG GraphMessage,
@@ -411,6 +420,7 @@ BOOLEAN NTAPI PhSipNotifyCommitGraph(
     _In_ PVOID Context
     );
 
+_Function_class_(PH_GRAPH_MESSAGE_CALLBACK)
 BOOLEAN NTAPI PhSipNotifyPhysicalGraph(
     _In_ HWND GraphHandle,
     _In_ ULONG GraphMessage,
@@ -427,6 +437,7 @@ VOID PhSipUpdateMemoryPanel(
     VOID
     );
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS PhSipLoadMmAddresses(
     _In_ PVOID Parameter
     );
@@ -445,6 +456,7 @@ BOOLEAN PhSipGetMemoryCompressionLimits(
 
 // I/O section
 
+_Function_class_(PH_SYSINFO_SECTION_CALLBACK)
 BOOLEAN PhSipIoSectionCallback(
     _In_ PPH_SYSINFO_SECTION Section,
     _In_ PH_SYSINFO_SECTION_MESSAGE Message,
@@ -486,6 +498,7 @@ VOID PhSipLayoutIoGraphs(
     _In_ HWND WindowHandle
     );
 
+_Function_class_(PH_GRAPH_MESSAGE_CALLBACK)
 BOOLEAN NTAPI PhSipNotifyIoReadGraph(
     _In_ HWND GraphHandle,
     _In_ ULONG GraphMessage,
@@ -494,6 +507,7 @@ BOOLEAN NTAPI PhSipNotifyIoReadGraph(
     _In_ PVOID Context
     );
 
+_Function_class_(PH_GRAPH_MESSAGE_CALLBACK)
 BOOLEAN NTAPI PhSipNotifyIoWriteGraph(
     _In_ HWND GraphHandle,
     _In_ ULONG GraphMessage,
@@ -502,6 +516,7 @@ BOOLEAN NTAPI PhSipNotifyIoWriteGraph(
     _In_ PVOID Context
     );
 
+_Function_class_(PH_GRAPH_MESSAGE_CALLBACK)
 BOOLEAN NTAPI PhSipNotifyIoOtherGraph(
     _In_ HWND GraphHandle,
     _In_ ULONG GraphMessage,

@@ -902,7 +902,7 @@ INT_PTR CALLBACK PhpProcessModulesDlgProc(
 
                         PhShellExecuteUserString(
                             hwndDlg,
-                            L"FileBrowseExecutable",
+                            SETTING_FILE_BROWSE_EXECUTABLE,
                             PhGetString(fileNameWin32),
                             FALSE,
                             L"Make sure the Explorer executable file is present."
@@ -920,7 +920,7 @@ INT_PTR CALLBACK PhpProcessModulesDlgProc(
 
                         PhShellExecuteUserString(
                             hwndDlg,
-                            L"ProgramInspectExecutables",
+                            SETTING_PROGRAM_INSPECT_EXECUTABLES,
                             PhGetString(fileNameWin32),
                             FALSE,
                             L"Make sure the PE Viewer executable file is present."
@@ -958,7 +958,8 @@ INT_PTR CALLBACK PhpProcessModulesDlgProc(
                     PPH_EMENU_ITEM zeroPadItem;
                     PPH_EMENU_ITEM selectedItem;
 
-                    GetWindowRect(GetDlgItem(hwndDlg, IDC_FILTEROPTIONS), &rect);
+                    if (!PhGetWindowRect(GetDlgItem(hwndDlg, IDC_FILTEROPTIONS), &rect))
+                        break;
 
                     menu = PhCreateEMenu();
                     PhInsertEMenuItem(menu, dynamicItem = PhCreateEMenuItem(0, PH_MODULE_FLAGS_DYNAMIC_OPTION, L"Hide dynamic", NULL, NULL), ULONG_MAX);
@@ -1028,7 +1029,7 @@ INT_PTR CALLBACK PhpProcessModulesDlgProc(
                     {
                         if (selectedItem->Id == PH_MODULE_FLAGS_LOAD_MODULE_OPTION)
                         {
-                            if (PhGetIntegerSetting(L"EnableWarnings") && !PhShowConfirmMessage(
+                            if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) && !PhShowConfirmMessage(
                                 hwndDlg,
                                 L"load",
                                 L"a module",

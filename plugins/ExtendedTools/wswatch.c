@@ -96,7 +96,7 @@ VOID EtShowWsWatchDialog(
     PhDialogBox(
         PluginInstance->DllBase,
         MAKEINTRESOURCE(IDD_WSWATCH),
-        !!PhGetIntegerSetting(L"ForceNoParent") ? NULL : ParentWindowHandle,
+        !!PhGetIntegerSetting(SETTING_FORCE_NO_PARENT) ? NULL : ParentWindowHandle,
         EtpWsWatchDlgProc,
         context
         );
@@ -151,6 +151,7 @@ VOID EtpDereferenceWsWatchContext(
     }
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 static NTSTATUS EtpSymbolLookupFunction(
     _In_ PVOID Parameter
     )
@@ -475,7 +476,7 @@ INT_PTR CALLBACK EtpWsWatchDlgProc(
             PhAddLayoutItem(&context->LayoutManager, context->ListViewHandle, NULL, PH_ANCHOR_ALL);
             PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDOK), NULL, PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM);
 
-            if (PhGetIntegerPairSetting(SETTING_NAME_WSWATCH_WINDOW_POSITION).X != 0)
+            if (PhValidWindowPlacementFromSetting(SETTING_NAME_WSWATCH_WINDOW_POSITION))
                 PhLoadWindowPlacementFromSetting(SETTING_NAME_WSWATCH_WINDOW_POSITION, SETTING_NAME_WSWATCH_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, GetParent(hwndDlg));
@@ -515,7 +516,7 @@ INT_PTR CALLBACK EtpWsWatchDlgProc(
 
             PhSetWindowText(context->WindowHandle, PH_AUTO_T(PH_STRING, EtpCreateWindowTitle(context))->Buffer);
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     case WM_DESTROY:
@@ -616,7 +617,7 @@ INT_PTR CALLBACK EtpWsWatchDlgProc(
                             {
                                 PhShellExecuteUserString(
                                     hwndDlg,
-                                    L"ProgramInspectExecutables",
+                                    SETTING_PROGRAM_INSPECT_EXECUTABLES,
                                     PhGetString(fileNameWin32),
                                     FALSE,
                                     L"Make sure the PE Viewer executable file is present."
@@ -702,7 +703,7 @@ INT_PTR CALLBACK EtpWsWatchDlgProc(
                         {
                             PhShellExecuteUserString(
                                 hwndDlg,
-                                L"ProgramInspectExecutables",
+                                SETTING_PROGRAM_INSPECT_EXECUTABLES,
                                 PhGetString(fileNameWin32),
                                 FALSE,
                                 L"Make sure the PE Viewer executable file is present."
@@ -713,7 +714,7 @@ INT_PTR CALLBACK EtpWsWatchDlgProc(
                         {
                             PhShellExecuteUserString(
                                 hwndDlg,
-                                L"FileBrowseExecutable",
+                                SETTING_FILE_BROWSE_EXECUTABLE,
                                 PhGetString(fileNameWin32),
                                 FALSE,
                                 L"Make sure the Explorer executable file is present."

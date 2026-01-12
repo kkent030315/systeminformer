@@ -145,7 +145,7 @@ BOOLEAN EtpNpuSysInfoSectionCallback(
             PPH_GRAPH_DRAW_INFO drawInfo = Parameter1;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (EtEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorCpuKernel"), 0, Section->Parameters->WindowDpi);
+            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_CPU_KERNEL), 0, Section->Parameters->WindowDpi);
             PhGetDrawInfoGraphBuffers(&Section->GraphState.Buffers, drawInfo, EtNpuNodeHistory.Count);
 
             if (!Section->GraphState.Valid)
@@ -365,7 +365,7 @@ INT_PTR CALLBACK EtpNpuDialogProc(
 
             NpuPanel = PhCreateDialog(PluginInstance->DllBase, MAKEINTRESOURCE(IDD_SYSINFO_NPUPANEL), hwndDlg, EtpNpuPanelDialogProc, NULL);
             ShowWindow(NpuPanel, SW_SHOW);
-            PhAddLayoutItemEx(&NpuLayoutManager, NpuPanel, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, panelItem->Margin);
+            PhAddLayoutItemEx(&NpuLayoutManager, NpuPanel, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, &panelItem->Margin);
 
             EtpCreateNpuGraphs();
             EtpUpdateNpuGraphs();
@@ -398,6 +398,8 @@ INT_PTR CALLBACK EtpNpuDialogProc(
                 SetWindowFont(GetDlgItem(hwndDlg, IDC_NPUNAME), NpuSection->Parameters->MediumFont, FALSE);
             }
 
+            PhLayoutManagerUpdate(&NpuLayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&NpuLayoutManager);
             EtpLayoutNpuGraphs(hwndDlg);
         }
         break;
@@ -621,8 +623,8 @@ VOID EtpLayoutNpuGraphs(
     PhGetSizeDpiValue(&marginRect, NpuDialogWindowDpi, TRUE);
     graphPadding = PhGetDpi(ET_NPU_PADDING, NpuDialogWindowDpi);
 
-    GetClientRect(NpuDialog, &clientRect);
-    GetClientRect(GetDlgItem(NpuDialog, IDC_NPU_L), &labelRect);
+    PhGetClientRect(NpuDialog, &clientRect);
+    PhGetClientRect(GetDlgItem(NpuDialog, IDC_NPU_L), &labelRect);
     graphWidth = clientRect.right - marginRect.left - marginRect.right;
 
     if (EtNpuSupported)
@@ -847,7 +849,7 @@ VOID EtpNotifyNpuGraph(
             PPH_GRAPH_DRAW_INFO drawInfo = getDrawInfo->DrawInfo;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (EtEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorCpuKernel"), 0, NpuSection->Parameters->WindowDpi);
+            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_CPU_KERNEL), 0, NpuSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &NpuGraphState,
@@ -957,7 +959,7 @@ VOID EtpNotifyDedicatedNpuGraph(
             ULONG i;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (EtEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorPrivate"), 0, NpuSection->Parameters->WindowDpi);
+            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_PRIVATE), 0, NpuSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &DedicatedGraphState,
@@ -1038,7 +1040,7 @@ VOID EtpNotifySharedNpuGraph(
             ULONG i;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (EtEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorPhysical"), 0, NpuSection->Parameters->WindowDpi);
+            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_PHYSICAL), 0, NpuSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &SharedGraphState,
@@ -1119,7 +1121,7 @@ VOID EtpNotifyPowerUsageNpuGraph(
             ULONG i;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (EtEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorPowerUsage"), 0, NpuSection->Parameters->WindowDpi);
+            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_POWER_USAGE), 0, NpuSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &PowerUsageGraphState,
@@ -1191,7 +1193,7 @@ VOID EtpNotifyTemperatureNpuGraph(
             ULONG i;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (EtEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorTemperature"), 0, NpuSection->Parameters->WindowDpi);
+            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_TEMPERATURE), 0, NpuSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &TemperatureGraphState,
@@ -1271,7 +1273,7 @@ VOID EtpNotifyFanRpmNpuGraph(
             ULONG i;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (EtEnableScaleText ? PH_GRAPH_LABEL_MAX_Y : 0);
-            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorFanRpm"), 0, NpuSection->Parameters->WindowDpi);
+            NpuSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_FAN_RPM), 0, NpuSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &FanRpmGraphState,

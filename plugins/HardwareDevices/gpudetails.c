@@ -421,12 +421,12 @@ INT_PTR CALLBACK GraphicsDeviceDetailsDlgProc(
             PhInitializeLayoutManager(&context->LayoutManager, hwndDlg);
             PhAddLayoutItem(&context->LayoutManager, context->ListViewHandle, NULL, PH_ANCHOR_ALL);
 
-            if (PhGetIntegerPairSetting(SETTING_NAME_GRAPHICS_DETAILS_WINDOW_POSITION).X != 0)
+            if (PhValidWindowPlacementFromSetting(SETTING_NAME_GRAPHICS_DETAILS_WINDOW_POSITION))
                 PhLoadWindowPlacementFromSetting(SETTING_NAME_GRAPHICS_DETAILS_WINDOW_POSITION, SETTING_NAME_GRAPHICS_DETAILS_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, GetParent(hwndDlg));
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
 
             GraphicsDeviceQueryAdapterDetails(context);
 
@@ -479,6 +479,9 @@ INT_PTR CALLBACK GraphicsDeviceDetailsDlgProc(
     case WM_DPICHANGED:
         {
             LONG windowDpi = HIWORD(wParam);
+
+            PhLayoutManagerUpdate(&context->LayoutManager, windowDpi);
+            PhLayoutManagerLayout(&context->LayoutManager);
 
             PhSetApplicationWindowIconEx(hwndDlg, windowDpi);
         }
@@ -563,6 +566,7 @@ INT_PTR CALLBACK GraphicsDeviceDetailsDlgProc(
     return FALSE;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS GraphicsDeviceDetailsDialogThreadStart(
     _In_ PVOID Parameter
     )
@@ -578,7 +582,7 @@ NTSTATUS GraphicsDeviceDetailsDialogThreadStart(
     windowHandle = PhCreateDialog(
         PluginInstance->DllBase,
         MAKEINTRESOURCE(IDD_GPUDEVICE_DETAILS),
-        !!PhGetIntegerSetting(L"ForceNoParent") ? NULL : context->ParentWindowHandle,
+        !!PhGetIntegerSetting(SETTING_FORCE_NO_PARENT) ? NULL : context->ParentWindowHandle,
         GraphicsDeviceDetailsDlgProc,
         context
         );

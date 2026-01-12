@@ -162,14 +162,14 @@ NTSTATUS PhFilterLoadUnload(
     };
 
     RtlInitUnicodeString(&objectName, FLT_MSG_DEVICE_NAME);
-    InitializeObjectAttributes(
+    InitializeObjectAttributesEx(
         &objectAttributes,
         &objectName,
         OBJ_CASE_INSENSITIVE | (WindowsVersion < WINDOWS_10 ? 0 : OBJ_DONT_REPARSE),
         NULL,
-        NULL
+        NULL,
+        &filterSecurityQos
         );
-    objectAttributes.SecurityQualityOfService = &filterSecurityQos;
 
     if (!NT_SUCCESS(status = NtCreateFile(
         &fileHandle,
@@ -187,7 +187,7 @@ NTSTATUS PhFilterLoadUnload(
         return status;
 
     filterLoadParametersLength = UFIELD_OFFSET(FLT_LOAD_PARAMETERS, FilterName[ServiceName->Length]) + sizeof(UNICODE_NULL);
-    filterLoadParameters = _malloca(filterLoadParametersLength);
+    filterLoadParameters = PhAllocateStack(filterLoadParametersLength);
 
     if (filterLoadParameters)
     {
@@ -208,7 +208,7 @@ NTSTATUS PhFilterLoadUnload(
             0
             );
 
-        _freea(filterLoadParameters);
+        PhFreeStack(filterLoadParameters);
     }
     else
     {

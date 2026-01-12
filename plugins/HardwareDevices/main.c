@@ -50,7 +50,7 @@ VOID NTAPI LoadSettings(
 {
     NetAdapterEnableNdis = !!PhGetIntegerSetting(SETTING_NAME_ENABLE_NDIS);
     NetWindowsVersion = PhWindowsVersion;
-    NetUpdateInterval = PhGetIntegerSetting(L"UpdateInterval");
+    NetUpdateInterval = PhGetIntegerSetting(SETTING_UPDATE_INTERVAL);
 }
 
 _Function_class_(PH_CALLBACK_FUNCTION)
@@ -575,7 +575,8 @@ VOID ShowDeviceMenu(
     PPH_EMENU subMenu;
     PPH_EMENU_ITEM selectedItem;
 
-    GetCursorPos(&cursorPos);
+    if (!PhGetClientPos(ParentWindow, &cursorPos))
+        return;
 
     menu = PhCreateEMenu();
     PhInsertEMenuItem(menu, PhCreateEMenuItem(0, 0, L"Enable", NULL, NULL), ULONG_MAX);

@@ -59,10 +59,13 @@ typedef struct _PHP_THEME_WINDOW_COMBO_CONTEXT
     POINT CursorPos;
 } PHP_THEME_WINDOW_COMBO_CONTEXT, *PPHP_THEME_WINDOW_COMBO_CONTEXT;
 
+_Function_class_(PH_WINDOW_ENUM_CALLBACK)
 BOOLEAN CALLBACK PhpThemeWindowEnumChildWindows(
     _In_ HWND WindowHandle,
     _In_opt_ PVOID Context
     );
+
+_Function_class_(PH_WINDOW_ENUM_CALLBACK)
 BOOLEAN CALLBACK PhpReInitializeThemeWindowEnumChildWindows(
     _In_ HWND WindowHandle,
     _In_opt_ PVOID Context
@@ -355,6 +358,39 @@ VOID PhReInitializeWindowTheme(
 #define DWMWA_SYSTEMBACKDROP_TYPE 38
 #endif
 
+HRESULT PhGetWindowThemeAttribute(
+    _In_ HWND WindowHandle,
+    _In_ ULONG AttributeId,
+    _Out_writes_bytes_(AttributeLength) PVOID Attribute,
+    _In_ ULONG AttributeLength
+    )
+{
+    static PH_INITONCE initOnce = PH_INITONCE_INIT;
+    static HRESULT (WINAPI* DwmGetWindowAttribute_I)(
+        _In_ HWND WindowHandle,
+        _In_ ULONG AttributeId,
+        _Out_writes_bytes_(AttributeLength) PVOID Attribute,
+        _In_ ULONG AttributeLength
+        );
+
+    if (PhBeginInitOnce(&initOnce))
+    {
+        PVOID baseAddress;
+
+        if (baseAddress = PhLoadLibrary(L"dwmapi.dll"))
+        {
+            DwmGetWindowAttribute_I = PhGetDllBaseProcedureAddress(baseAddress, "DwmGetWindowAttribute", 0);
+        }
+
+        PhEndInitOnce(&initOnce);
+    }
+
+    if (!DwmGetWindowAttribute_I)
+        return HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
+
+    return DwmGetWindowAttribute_I(WindowHandle, AttributeId, Attribute, AttributeLength);
+}
+
 HRESULT PhSetWindowThemeAttribute(
     _In_ HWND WindowHandle,
     _In_ ULONG AttributeId,
@@ -550,8 +586,10 @@ VOID PhWindowThemeMainMenuBorder(
         RECT windowRect;
         HDC hdc;
 
-        GetClientRect(WindowHandle, &clientRect);
-        GetWindowRect(WindowHandle, &windowRect);
+        if (!PhGetClientRect(WindowHandle, &clientRect))
+            return;
+        if (!PhGetWindowRect(WindowHandle, &windowRect))
+            return;
 
         MapWindowPoints(WindowHandle, NULL, (PPOINT)&clientRect, 2);
         PhOffsetRect(&clientRect, -windowRect.left, -windowRect.top);
@@ -670,6 +708,7 @@ VOID PhInitializeWindowThemeACLUI(
     InvalidateRect(ACLUIControl, NULL, FALSE);
 }
 
+_Function_class_(PH_WINDOW_ENUM_CALLBACK)
 BOOLEAN CALLBACK PhpThemeWindowEnumChildWindows(
     _In_ HWND WindowHandle,
     _In_opt_ PVOID Context
@@ -911,6 +950,7 @@ BOOLEAN CALLBACK PhpThemeWindowEnumChildWindows(
     return TRUE;
 }
 
+_Function_class_(PH_WINDOW_ENUM_CALLBACK)
 BOOLEAN CALLBACK PhpReInitializeThemeWindowEnumChildWindows(
     _In_ HWND WindowHandle,
     _In_opt_ PVOID Context
@@ -1709,7 +1749,7 @@ LRESULT CALLBACK PhThemeWindowDrawButton(
                             isCheckbox ? BP_CHECKBOX : BP_RADIOBUTTON,
                             state,
                             &bufferRect,
-                            TS_TRUE,
+                            THEMEPARTSIZE_TRUE,
                             &checkBoxSize
                             );
                         GetTextExtentPoint32W(DrawInfo->hdc, L"T", 1, &textSize);
@@ -2430,7 +2470,8 @@ LRESULT CALLBACK PhpThemeWindowGroupBoxSubclassProc(
             HDC hdc = (HDC)wParam;
             RECT clientRect;
 
-            GetClientRect(WindowHandle, &clientRect);
+            if (!PhGetClientRect(WindowHandle, &clientRect))
+                break;
 
             ThemeWindowRenderGroupBoxControl(WindowHandle, hdc, &clientRect, oldWndProc);
         }
@@ -2552,7 +2593,7 @@ VOID ThemeWindowRenderTabControl(
         itemRect.bottom += itemRect.bottom + 1 < headerBottom ? 1 : -1;
         itemRect.right += itemRect.right + 1 < clientRect->right;
 
-        if (PhPtInRect(&itemRect, Context->CursorPos))
+        if (PhPtInRect(&itemRect, &Context->CursorPos))
         {
             //switch (PhpThemeColorMode)
             //{
@@ -2633,7 +2674,7 @@ VOID ThemeWindowRenderTabControl(
         itemRect.right += itemRect.right + 1 < clientRect->right;
         PhInflateRect(&itemRect, 1, 1);     // draw selected tab slightly bigger
         itemRect.bottom -= 1;
-        SetDCBrushColor(bufferDc, PhPtInRect(&itemRect, Context->CursorPos) ? PhThemeWindowHighlightColor : RGB(0x50, 0x50, 0x50));
+        SetDCBrushColor(bufferDc, PhPtInRect(&itemRect, &Context->CursorPos) ? PhThemeWindowHighlightColor : RGB(0x50, 0x50, 0x50));
         FillRect(bufferDc, &itemRect, PhGetStockBrush(DC_BRUSH));
 
         if (TabCtrl_GetItem(WindowHandle, currentSelection, &tabItem))
@@ -2793,7 +2834,8 @@ LRESULT CALLBACK PhpThemeWindowTabControlWndSubclassProc(
                 HBITMAP bufferBitmap;
                 HBITMAP oldBufferBitmap;
 
-                GetClientRect(WindowHandle, &clientRect);
+                if (!PhGetClientRect(WindowHandle, &clientRect))
+                    break;
 
                 hdc = GetDC(WindowHandle);
                 bufferDc = CreateCompatibleDC(hdc);
@@ -2924,7 +2966,8 @@ LRESULT CALLBACK PhpThemeWindowListBoxControlSubclassProc(
 
             updateRegion = (HRGN)wParam;
 
-            GetWindowRect(WindowHandle, &windowRect);
+            if (!PhGetWindowRect(WindowHandle, &windowRect))
+                break;
 
             // draw the scrollbar without the border.
             {
@@ -2944,7 +2987,7 @@ LRESULT CALLBACK PhpThemeWindowListBoxControlSubclassProc(
             if (updateRegion == HRGN_FULL)
                 updateRegion = NULL;
 
-            flags = DCX_WINDOW | DCX_LOCKWINDOWUPDATE | DCX_USESTYLE;
+            flags = DCX_WINDOW | DCX_CACHE | DCX_USESTYLE;
 
             if (updateRegion)
                 flags |= DCX_INTERSECTRGN | DCX_NODELETERGN;
@@ -3015,7 +3058,7 @@ VOID ThemeWindowRenderComboBox(
     SetDCBrushColor(bufferDc, PhThemeWindowBackground2Color);
     FillRect(bufferDc, clientRect, PhGetStockBrush(DC_BRUSH));
 
-    if (PhPtInRect(clientRect, Context->CursorPos))
+    if (PhPtInRect(clientRect, &Context->CursorPos))
     {
         SetDCBrushColor(bufferDc, PhThemeWindowHighlight2Color); // RGB(0, 120, 212) : RGB(68, 68, 68));
     }
@@ -3037,7 +3080,7 @@ VOID ThemeWindowRenderComboBox(
             CP_DROPDOWNBUTTONRIGHT,
             CBXSR_NORMAL,
             NULL,
-            TS_TRUE,
+            THEMEPARTSIZE_TRUE,
             &dropdownSize
             );
 
@@ -3207,7 +3250,8 @@ LRESULT CALLBACK PhpThemeWindowComboBoxControlSubclassProc(
                 HBITMAP bufferBitmap;
                 HBITMAP oldBufferBitmap;
 
-                GetClientRect(WindowHandle, &clientRect);
+                if (!PhGetClientRect(WindowHandle, &clientRect))
+                    break;
 
                 hdc = GetDC(WindowHandle);
                 bufferDc = CreateCompatibleDC(hdc);

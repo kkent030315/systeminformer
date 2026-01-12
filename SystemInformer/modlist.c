@@ -22,11 +22,13 @@
 #include <svcsup.h>
 #include <phsettings.h>
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PhpModuleNodeHashtableEqualFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
     );
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PhpModuleNodeHashtableHashFunction(
     _In_ PVOID Entry
     );
@@ -41,6 +43,7 @@ VOID PhpRemoveModuleNode(
     _In_ PPH_MODULE_LIST_CONTEXT Context
     );
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpModuleTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,
@@ -62,7 +65,7 @@ VOID PhInitializeModuleList(
     _Out_ PPH_MODULE_LIST_CONTEXT Context
     )
 {
-    BOOLEAN enableMonospaceFont = !!PhGetIntegerSetting(L"EnableMonospaceFont");
+    BOOLEAN enableMonospaceFont = !!PhGetIntegerSetting(SETTING_ENABLE_MONOSPACE_FONT);
 
     memset(Context, 0, sizeof(PH_MODULE_LIST_CONTEXT));
     Context->EnableStateHighlighting = TRUE;
@@ -141,6 +144,7 @@ VOID PhDeleteModuleList(
     PhDereferenceObject(Context->NodeRootList);
 }
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PhpModuleNodeHashtableEqualFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
@@ -152,6 +156,7 @@ BOOLEAN PhpModuleNodeHashtableEqualFunction(
     return moduleNode1->ModuleItem == moduleNode2->ModuleItem;
 }
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PhpModuleNodeHashtableHashFunction(
     _In_ PVOID Entry
     )
@@ -167,9 +172,9 @@ VOID PhLoadSettingsModuleList(
     PPH_STRING settings;
     PPH_STRING sortSettings;
 
-    flags = PhGetIntegerSetting(L"ModuleTreeListFlags");
-    settings = PhGetStringSetting(L"ModuleTreeListColumns");
-    sortSettings = PhGetStringSetting(L"ModuleTreeListSort");
+    flags = PhGetIntegerSetting(SETTING_MODULE_TREE_LIST_FLAGS);
+    settings = PhGetStringSetting(SETTING_MODULE_TREE_LIST_COLUMNS);
+    sortSettings = PhGetStringSetting(SETTING_MODULE_TREE_LIST_SORT);
 
     Context->Flags = flags;
     PhCmLoadSettingsEx(Context->TreeNewHandle, &Context->Cm, 0, &settings->sr, &sortSettings->sr);
@@ -187,9 +192,9 @@ VOID PhSaveSettingsModuleList(
 
     settings = PhCmSaveSettingsEx(Context->TreeNewHandle, &Context->Cm, 0, &sortSettings);
 
-    PhSetIntegerSetting(L"ModuleTreeListFlags", Context->Flags);
-    PhSetStringSetting2(L"ModuleTreeListColumns", &settings->sr);
-    PhSetStringSetting2(L"ModuleTreeListSort", &sortSettings->sr);
+    PhSetIntegerSetting(SETTING_MODULE_TREE_LIST_FLAGS, Context->Flags);
+    PhSetStringSetting2(SETTING_MODULE_TREE_LIST_COLUMNS, &settings->sr);
+    PhSetStringSetting2(SETTING_MODULE_TREE_LIST_SORT, &sortSettings->sr);
 
     PhDereferenceObject(settings);
     PhDereferenceObject(sortSettings);
@@ -559,6 +564,7 @@ VOID PhTickModuleNodes(
     return PhModifySort(sortResult, context->TreeNewSortOrder); \
 }
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpModuleTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,
@@ -1416,7 +1422,7 @@ BOOLEAN NTAPI PhpModuleTreeNewCallback(
 
                     PhCustomDrawTreeTimeLine(
                         customDraw->Dc,
-                        customDraw->CellRect,
+                        &customDraw->CellRect,
                         PhEnableThemeSupport ? PH_DRAW_TIMELINE_DARKTHEME : 0,
                         &context->ProcessCreateTime,
                         &moduleItem->LoadTime

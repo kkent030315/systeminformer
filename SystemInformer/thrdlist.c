@@ -24,11 +24,13 @@
 #include <thrdprv.h>
 #include <secedit.h>
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PhpThreadNodeHashtableEqualFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
     );
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PhpThreadNodeHashtableHashFunction(
     _In_ PVOID Entry
     );
@@ -42,6 +44,7 @@ VOID PhpRemoveThreadNode(
     _In_ PPH_THREAD_LIST_CONTEXT Context
     );
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpThreadTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,
@@ -167,6 +170,7 @@ VOID PhDeleteThreadList(
     PhDereferenceObject(Context->NodeList);
 }
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PhpThreadNodeHashtableEqualFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
@@ -178,6 +182,7 @@ BOOLEAN PhpThreadNodeHashtableEqualFunction(
     return threadNode1->ThreadId == threadNode2->ThreadId;
 }
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PhpThreadNodeHashtableHashFunction(
     _In_ PVOID Entry
     )
@@ -195,9 +200,9 @@ VOID PhLoadSettingsThreadList(
     ULONG sortColumn;
     PH_SORT_ORDER sortOrder;
 
-    settings = PhGetStringSetting(L"ThreadTreeListColumns");
-    sortSettings = PhGetStringSetting(L"ThreadTreeListSort");
-    Context->Flags = PhGetIntegerSetting(L"ThreadTreeListFlags");
+    settings = PhGetStringSetting(SETTING_THREAD_TREE_LIST_COLUMNS);
+    sortSettings = PhGetStringSetting(SETTING_THREAD_TREE_LIST_SORT);
+    Context->Flags = PhGetIntegerSetting(SETTING_THREAD_TREE_LIST_FLAGS);
 
     PhCmLoadSettingsEx(Context->TreeNewHandle, &Context->Cm, 0, &settings->sr, &sortSettings->sr);
 
@@ -222,9 +227,9 @@ VOID PhSaveSettingsThreadList(
 
     settings = PhCmSaveSettingsEx(Context->TreeNewHandle, &Context->Cm, 0, &sortSettings);
 
-    PhSetIntegerSetting(L"ThreadTreeListFlags", Context->Flags);
-    PhSetStringSetting2(L"ThreadTreeListColumns", &settings->sr);
-    PhSetStringSetting2(L"ThreadTreeListSort", &sortSettings->sr);
+    PhSetIntegerSetting(SETTING_THREAD_TREE_LIST_FLAGS, Context->Flags);
+    PhSetStringSetting2(SETTING_THREAD_TREE_LIST_COLUMNS, &settings->sr);
+    PhSetStringSetting2(SETTING_THREAD_TREE_LIST_SORT, &sortSettings->sr);
 
     PhDereferenceObject(settings);
     PhDereferenceObject(sortSettings);
@@ -904,6 +909,7 @@ VOID PhpUpdateThreadNodeStackUsage(
     return PhModifySort(sortResult, context->TreeNewSortOrder); \
 }
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpThreadTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,
@@ -2322,7 +2328,7 @@ BOOLEAN NTAPI PhpThreadTreeNewCallback(
             else if (context->HighlightSuspended && threadItem->WaitReason == Suspended)
                 getNodeColor->BackColor = PhCsColorSuspended;
             else if (context->HighlightSuspended && threadItem->WaitReason == DelayExecution) // NtDelayExecution
-                getNodeColor->BackColor = PhCsColorPartiallySuspended;
+                getNodeColor->BackColor = PhCsColorImmersiveProcesses;
             else if (context->HighlightSuspended && threadItem->WaitReason == UserRequest) // NtWaitForSingleObject
                 getNodeColor->BackColor = PhCsColorOwnProcesses;
             else if (context->HighlightSuspended && threadItem->WaitReason == WrAlertByThreadId)
@@ -2359,7 +2365,7 @@ BOOLEAN NTAPI PhpThreadTreeNewCallback(
 
                     PhCustomDrawTreeTimeLine(
                         customDraw->Dc,
-                        customDraw->CellRect,
+                        &customDraw->CellRect,
                         PhEnableThemeSupport ? PH_DRAW_TIMELINE_DARKTHEME : 0,
                         &context->ProcessCreateTime,
                         &threadItem->CreateTime

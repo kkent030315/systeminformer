@@ -13,6 +13,7 @@
 #include <phapp.h>
 #include <emenu.h>
 #include <settings.h>
+#include <phsettings.h>
 #include <colmgr.h>
 #include <phplug.h>
 
@@ -116,7 +117,7 @@ VOID PluginsLoadSettingsTreeList(
 {
     PPH_STRING settings;
 
-    settings = PhGetStringSetting(L"PluginManagerTreeListColumns");
+    settings = PhGetStringSetting(SETTING_PLUGIN_MANAGER_TREE_LIST_COLUMNS);
     PhCmLoadSettings(Context->TreeNewHandle, &settings->sr);
     PhDereferenceObject(settings);
 }
@@ -128,10 +129,11 @@ VOID PluginsSaveSettingsTreeList(
     PPH_STRING settings;
 
     settings = PhCmSaveSettings(Context->TreeNewHandle);
-    PhSetStringSetting2(L"PluginManagerTreeListColumns", &settings->sr);
+    PhSetStringSetting2(SETTING_PLUGIN_MANAGER_TREE_LIST_COLUMNS, &settings->sr);
     PhDereferenceObject(settings);
 }
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PluginsNodeHashtableEqualFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
@@ -143,6 +145,7 @@ BOOLEAN PluginsNodeHashtableEqualFunction(
     return PhEqualString(node1->InternalName, node2->InternalName, TRUE);
 }
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PluginsNodeHashtableHashFunction(
     _In_ PVOID Entry
     )
@@ -487,6 +490,7 @@ PPH_PLUGIN_TREE_ROOT_NODE GetSelectedPluginsNode(
     return NULL;
 }
 
+_Success_(return)
 BOOLEAN GetSelectedPluginsNodes(
     _In_ PPH_PLUGMAN_CONTEXT Context,
     _Out_ PPH_PLUGIN_TREE_ROOT_NODE **Nodes,
@@ -606,6 +610,7 @@ PPH_STRING PhpGetPluginBaseName(
     }
 }
 
+_Function_class_(PH_PLUGIN_ENUMERATE)
 NTSTATUS NTAPI PhpEnumeratePluginCallback(
     _In_ PPH_PLUGIN Information,
     _In_ PVOID Context
@@ -685,7 +690,7 @@ INT_PTR CALLBACK PhPluginsDlgProc(
             case IDC_DISABLED:
                 {
                     PhDialogBox(
-                        PhInstanceHandle,
+                        NtCurrentImageBase(),
                         MAKEINTRESOURCE(IDD_PLUGINSDISABLED),
                         hwndDlg,
                         PhpPluginsDisabledDlgProc,
@@ -767,7 +772,7 @@ INT_PTR CALLBACK PhPluginsDlgProc(
                         case PH_PLUGIN_TREE_ITEM_MENU_PROPERTIES:
                             {
                                 PhDialogBox(
-                                    PhInstanceHandle,
+                                    NtCurrentImageBase(),
                                     MAKEINTRESOURCE(IDD_PLUGINPROPERTIES),
                                     hwndDlg,
                                     PhpPluginPropertiesDlgProc,
@@ -788,7 +793,7 @@ INT_PTR CALLBACK PhPluginsDlgProc(
                         break;
 
                     PhDialogBox(
-                        PhInstanceHandle,
+                        NtCurrentImageBase(),
                         MAKEINTRESOURCE(IDD_PLUGINPROPERTIES),
                         hwndDlg,
                         PhpPluginPropertiesDlgProc,
@@ -797,6 +802,12 @@ INT_PTR CALLBACK PhPluginsDlgProc(
                 }
                 break;
             }
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&context->LayoutManager);
         }
         break;
     case WM_SIZE:
@@ -1028,7 +1039,7 @@ VOID PhpAddDisabledPlugins(
     PPH_STRING displayText;
     INT lvItemIndex;
 
-    disabled = PhGetStringSetting(L"DisabledPlugins");
+    disabled = PhGetStringSetting(SETTING_DISABLED_PLUGINS);
     remainingPart = disabled->sr;
 
     while (remainingPart.Length)
@@ -1059,7 +1070,7 @@ ULONG PhpDisabledPluginsCount(
     PH_STRINGREF part;
     ULONG count = 0;
 
-    disabled = PhGetStringSetting(L"DisabledPlugins");
+    disabled = PhGetStringSetting(SETTING_DISABLED_PLUGINS);
     remainingPart = disabled->sr;
 
     while (remainingPart.Length)

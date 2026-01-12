@@ -80,7 +80,12 @@ ipch/
 .vs/
 
 # VS Code files
-.vscode/
+.vscode/*
+.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+
 *.code-workspace
 
 # NuGet Packages
@@ -89,13 +94,18 @@ ipch/
 **/vcpkg_installed/
 
 # CMake files
-build/.cmake/
-build/CMakeCache.txt
-build/CMakeFiles/
+**/.cmake/
+**/CMakeCache.txt
+**/CMakeFiles/
 
 # JSON Compilation Database
 **/compile_commands.json
 **/.cache/
+
+# AI instructions and caches
+.github/copilot-instructions.md
+.clinerules
+memory-bank/
 
 ##########################
 ## Project specific rules
@@ -106,7 +116,11 @@ build/CMakeFiles/
 build/output/
 plugins-extra/
 sdk/
+target/
 tools/thirdparty/vcpkg_installed/*
+
+bin-cmake/
+build-*/
 
 !KSystemInformer/bin-signed/*/ksi.dll
 !KSystemInformer/bin-signed/*/ksi.pdb

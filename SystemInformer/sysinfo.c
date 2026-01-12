@@ -50,7 +50,7 @@ static HANDLE PhSipThread = NULL;
 HWND PhSipWindow = NULL;
 static PPH_LIST PhSipDialogList = NULL;
 static PH_EVENT InitializedEvent = PH_EVENT_INIT;
-static PWSTR InitialSectionName;
+static PCWSTR InitialSectionName;
 static RECT MinimumSize;
 static PH_CALLBACK_REGISTRATION ProcessesUpdatedRegistration;
 static PH_CALLBACK_REGISTRATION SettingsUpdatedRegistration;
@@ -72,7 +72,7 @@ VOID PhShowSystemInformationDialog(
     _In_opt_ PCWSTR SectionName
     )
 {
-    InitialSectionName = (PWSTR)SectionName;
+    InitialSectionName = SectionName;
 
     if (!PhSipThread)
     {
@@ -88,6 +88,7 @@ VOID PhShowSystemInformationDialog(
     SendMessage(PhSipWindow, SI_MSG_SYSINFO_ACTIVATE, (WPARAM)SectionName, 0);
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS PhSipSysInfoThreadStart(
     _In_ PVOID Parameter
     )
@@ -357,7 +358,7 @@ VOID PhSipOnInitDialog(
     VOID
     )
 {
-    RECT clientRect;
+    //RECT clientRect;
     PH_STRINGREF sectionName;
     PPH_SYSINFO_SECTION section;
 
@@ -409,7 +410,7 @@ VOID PhSipOnInitDialog(
         PhInvokeCallback(PhGetGeneralCallback(GeneralCallbackSystemInformationInitializing), &pointers);
     }
 
-    SeparatorControl = CreateWindow(
+    SeparatorControl = PhCreateWindow(
         WC_STATIC,
         NULL,
         WS_CHILD | SS_OWNERDRAW,
@@ -422,7 +423,7 @@ VOID PhSipOnInitDialog(
         NULL,
         NULL
         );
-    RestoreSummaryControl = CreateWindow(
+    RestoreSummaryControl = PhCreateWindow(
         WC_STATIC,
         NULL,
         WS_CHILD | WS_TABSTOP | SS_OWNERDRAW | SS_NOTIFY,
@@ -440,7 +441,7 @@ VOID PhSipOnInitDialog(
     PhSetWindowProcedure(RestoreSummaryControl, PhSipPanelHookWndProc);
     RestoreSummaryControlHot = FALSE;
 
-    GetClientRect(PhSipWindow, &clientRect);
+    //PhGetClientRect(PhSipWindow, &clientRect);
     MinimumSize.left = 0;
     MinimumSize.top = 0;
     MinimumSize.right = 430;
@@ -469,15 +470,15 @@ VOID PhSipOnInitDialog(
         //    MinimumSize.bottom = newMinimumHeight;
     }
 
-    PhLoadWindowPlacementFromSetting(L"SysInfoWindowPosition", L"SysInfoWindowSize", PhSipWindow);
+    PhLoadWindowPlacementFromSetting(SETTING_SYSINFO_WINDOW_POSITION, SETTING_SYSINFO_WINDOW_SIZE, PhSipWindow);
 
-    if (PhGetIntegerSetting(L"SysInfoWindowState") == SW_MAXIMIZE)
+    if (PhGetIntegerSetting(SETTING_SYSINFO_WINDOW_STATE) == SW_MAXIMIZE)
         ShowWindow(PhSipWindow, SW_MAXIMIZE);
 
     if (InitialSectionName)
         PhInitializeStringRefLongHint(&sectionName, InitialSectionName);
     else
-        sectionName = PhaGetStringSetting(L"SysInfoWindowSection")->sr;
+        sectionName = PhaGetStringSetting(SETTING_SYSINFO_WINDOW_SECTION)->sr;
 
     if (sectionName.Length != 0 && (section = PhSipFindSection(&sectionName)))
     {
@@ -502,11 +503,11 @@ VOID PhSipOnDestroy(
     PhUnregisterCallback(PhGetGeneralCallback(GeneralCallbackProcessProviderUpdatedEvent), &ProcessesUpdatedRegistration);
 
     if (CurrentSection)
-        PhSetStringSetting2(L"SysInfoWindowSection", &CurrentSection->Name);
+        PhSetStringSetting2(SETTING_SYSINFO_WINDOW_SECTION, &CurrentSection->Name);
     else
-        PhSetStringSetting(L"SysInfoWindowSection", L"");
+        PhSetStringSetting(SETTING_SYSINFO_WINDOW_SECTION, L"");
 
-    PhSaveWindowPlacementToSetting(L"SysInfoWindowPosition", L"SysInfoWindowSize", PhSipWindow);
+    PhSaveWindowPlacementToSetting(SETTING_SYSINFO_WINDOW_POSITION, SETTING_SYSINFO_WINDOW_SIZE, PhSipWindow);
     PhSipSaveWindowState();
 
     PostQuitMessage(0);
@@ -687,6 +688,7 @@ VOID PhSipOnCommand(
     }
 }
 
+_Function_class_(PH_GRAPH_MESSAGE_CALLBACK)
 BOOLEAN NTAPI PhSipGraphCallback(
     _In_ HWND GraphHandle,
     _In_ ULONG GraphMessage,
@@ -1009,6 +1011,7 @@ VOID PhSiNotifyChangeSettings(
     PhSipUpdateColorParameters();
 }
 
+_Function_class_(PH_SYSINFO_COLOR_SETUP_FUNCTION)
 VOID PhSiSetColorsGraphDrawInfo(
     _Out_ PPH_GRAPH_DRAW_INFO DrawInfo,
     _In_ COLORREF Color1,
@@ -1081,6 +1084,7 @@ VOID PhSiSetColorsGraphDrawInfo(
     }
 }
 
+_Function_class_(PH_GRAPH_LABEL_Y_FUNCTION)
 PPH_STRING PhSiSizeLabelYFunction(
     _In_ PPH_GRAPH_DRAW_INFO DrawInfo,
     _In_ ULONG DataIndex,
@@ -1109,6 +1113,7 @@ PPH_STRING PhSiSizeLabelYFunction(
     }
 }
 
+_Function_class_(PH_GRAPH_LABEL_Y_FUNCTION)
 PPH_STRING PhSiDoubleLabelYFunction(
     _In_ PPH_GRAPH_DRAW_INFO DrawInfo,
     _In_ ULONG DataIndex,
@@ -1135,6 +1140,7 @@ PPH_STRING PhSiDoubleLabelYFunction(
     }
 }
 
+_Function_class_(PH_GRAPH_LABEL_Y_FUNCTION)
 PPH_STRING PhSiUInt64LabelYFunction(
     _In_ PPH_GRAPH_DRAW_INFO DrawInfo,
     _In_ ULONG DataIndex,
@@ -1284,6 +1290,7 @@ VOID PhSipUpdateColorParameters(
     }
 }
 
+_Function_class_(PH_SYSINFO_CREATE_SECTION)
 PPH_SYSINFO_SECTION PhSipCreateSection(
     _In_ PPH_SYSINFO_SECTION Template
     )
@@ -1309,7 +1316,7 @@ PPH_SYSINFO_SECTION PhSipCreateSection(
     graphCreateParams.Options = options;
     graphCreateParams.Context = section;
 
-    section->GraphHandle = CreateWindow(
+    section->GraphHandle = PhCreateWindow(
         PH_GRAPH_CLASSNAME,
         NULL,
         WS_VISIBLE | WS_CHILD | WS_BORDER | WS_TABSTOP | GC_STYLE_FADEOUT | GC_STYLE_DRAW_PANEL,
@@ -1327,7 +1334,7 @@ PPH_SYSINFO_SECTION PhSipCreateSection(
     section->Parameters = &CurrentParameters;
 
     section->PanelId = IDDYNAMIC + SectionList->Count * 2 + 2;
-    section->PanelHandle = CreateWindow(
+    section->PanelHandle = PhCreateWindow(
         WC_STATIC,
         NULL,
         WS_CHILD | SS_OWNERDRAW | SS_NOTIFY,
@@ -1367,6 +1374,7 @@ VOID PhSipDestroySection(
     PhFree(Section);
 }
 
+_Function_class_(PH_SYSINFO_FIND_SECTION)
 PPH_SYSINFO_SECTION PhSipFindSection(
     _In_ PPH_STRINGREF Name
     )
@@ -1865,7 +1873,8 @@ VOID PhSipLayoutSummaryView(
     HDWP deferHandle;
     ULONG y;
 
-    GetClientRect(PhSipWindow, &clientRect);
+    if (!PhGetClientRect(PhSipWindow, &clientRect))
+        return;
 
     availableHeight = clientRect.bottom - CurrentParameters.WindowPadding * 2;
     availableWidth = clientRect.right - CurrentParameters.WindowPadding * 2;
@@ -1910,7 +1919,8 @@ VOID PhSipLayoutSectionView(
     ULONG y;
     ULONG containerLeft;
 
-    GetClientRect(PhSipWindow, &clientRect);
+    if (!PhGetClientRect(PhSipWindow, &clientRect))
+        return;
 
     availableHeight = clientRect.bottom - CurrentParameters.WindowPadding * 2;
     availableWidth = clientRect.right - CurrentParameters.WindowPadding * 2;
@@ -2005,6 +2015,7 @@ VOID PhSipLayoutSectionView(
     }
 }
 
+_Function_class_(PH_SYSINFO_ENTER_SECTION_VIEW)
 VOID PhSipEnterSectionView(
     _In_ PPH_SYSINFO_SECTION NewSection
     )
@@ -2082,6 +2093,7 @@ VOID PhSipEnterSectionViewInner(
     }
 }
 
+_Function_class_(PH_SYSINFO_RESTORE_SUMMARY_VIEW)
 VOID PhSipRestoreSummaryView(
     VOID
     )
@@ -2472,9 +2484,9 @@ VOID PhSipSaveWindowState(
     GetWindowPlacement(PhSipWindow, &placement);
 
     if (placement.showCmd == SW_NORMAL)
-        PhSetIntegerSetting(L"SysInfoWindowState", SW_NORMAL);
+        PhSetIntegerSetting(SETTING_SYSINFO_WINDOW_STATE, SW_NORMAL);
     else if (placement.showCmd == SW_MAXIMIZE)
-        PhSetIntegerSetting(L"SysInfoWindowState", SW_MAXIMIZE);
+        PhSetIntegerSetting(SETTING_SYSINFO_WINDOW_STATE, SW_MAXIMIZE);
 }
 
 _Function_class_(PH_CALLBACK_FUNCTION)

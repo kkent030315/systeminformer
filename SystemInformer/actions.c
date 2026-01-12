@@ -25,6 +25,7 @@
 #include <mapldr.h>
 #include <secwmi.h>
 #include <settings.h>
+#include <phsettings.h>
 #include <svcsup.h>
 
 #include <apiimport.h>
@@ -124,7 +125,6 @@ BOOLEAN PhpShowElevatePrompt(
  * \param WindowHandle The window to display user interface components on.
  * \param Connected A variable which receives TRUE if the elevated
  * action succeeded or FALSE if the action failed.
- *
  * \return TRUE if the user was prompted for elevation, otherwise
  * FALSE, in which case you need to show your own error message.
  */
@@ -141,7 +141,7 @@ BOOLEAN PhpElevationLevelAndConnectToPhSvc(
     if (PhGetOwnTokenAttributes().Elevated)
         return FALSE;
 
-    elevationLevel = PhGetIntegerSetting(L"ElevationLevel");
+    elevationLevel = PhGetIntegerSetting(SETTING_ELEVATION_LEVEL);
 
     if (elevationLevel == NeverElevateAction)
         return FALSE;
@@ -202,7 +202,7 @@ BOOLEAN PhpShowErrorAndConnectToPhSvc(
     if (PhGetOwnTokenAttributes().Elevated)
         return FALSE;
 
-    elevationLevel = PhGetIntegerSetting(L"ElevationLevel");
+    elevationLevel = PhGetIntegerSetting(SETTING_ELEVATION_LEVEL);
 
     if (elevationLevel == NeverElevateAction)
         return FALSE;
@@ -499,7 +499,7 @@ BOOLEAN PhUiLogoffComputer(
     if (ExitWindowsEx(EWX_LOGOFF, 0))
         return TRUE;
     else
-        PhShowStatus(WindowHandle, L"Unable to log off the computer.", 0, GetLastError());
+        PhShowStatus(WindowHandle, L"Unable to log off the computer.", 0, PhGetLastError());
 
     return FALSE;
 }
@@ -552,7 +552,7 @@ BOOLEAN PhUiRestartComputer(
     {
     case PH_POWERACTION_TYPE_WIN32:
         {
-            if (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+            if (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
                 WindowHandle,
                 L"restart",
                 L"the computer",
@@ -579,7 +579,7 @@ BOOLEAN PhUiRestartComputer(
             PPH_STRING messageText;
 
             messageText = PhaFormatString(
-                L"This option %s %s in an disorderly manner and may cause corrupted files or instability in the system.",
+                L"This option %s %s in a disorderly manner and may cause file corruption or system instability.",
                 L"performs a hard",
                 L"restart");
 
@@ -644,7 +644,7 @@ BOOLEAN PhUiRestartComputer(
         break;
     case PH_POWERACTION_TYPE_ADVANCEDBOOT:
         {
-            if (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+            if (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
                 WindowHandle,
                 L"restart",
                 L"the computer",
@@ -712,7 +712,7 @@ BOOLEAN PhUiRestartComputer(
                 break;
             }
 
-            if (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+            if (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
                 WindowHandle,
                 L"restart",
                 L"the computer",
@@ -742,7 +742,7 @@ BOOLEAN PhUiRestartComputer(
         break;
     case PH_POWERACTION_TYPE_UPDATE:
         {
-            if (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+            if (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
                 WindowHandle,
                 L"update and restart",
                 L"the computer",
@@ -761,7 +761,7 @@ BOOLEAN PhUiRestartComputer(
         break;
     case PH_POWERACTION_TYPE_WDOSCAN:
         {
-            if (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+            if (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
                 WindowHandle,
                 L"restart",
                 L"the computer for Windows Defender Offline Scan",
@@ -800,7 +800,7 @@ BOOLEAN PhUiShutdownComputer(
     {
     case PH_POWERACTION_TYPE_WIN32:
         {
-            if (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+            if (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
                 WindowHandle,
                 L"shut down",
                 L"the computer",
@@ -894,7 +894,7 @@ BOOLEAN PhUiShutdownComputer(
         break;
     case PH_POWERACTION_TYPE_UPDATE:
         {
-            if (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+            if (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
                 WindowHandle,
                 L"update and shutdown",
                 L"the computer",
@@ -930,7 +930,7 @@ PVOID PhUiCreateComputerBootDeviceMenu(
 
     if (!DelayLoadMenu)
     {
-        BOOLEAN bootEnumerateAllObjects = !!PhGetIntegerSetting(L"EnableBootObjectsEnumerate");
+        BOOLEAN bootEnumerateAllObjects = !!PhGetIntegerSetting(SETTING_ENABLE_BOOT_OBJECTS_ENUMERATE);
 
         if (bootApplicationList = PhBcdQueryBootApplicationList(bootEnumerateAllObjects))
         {
@@ -1012,7 +1012,7 @@ VOID PhUiHandleComputerBootApplicationMenu(
     BOOLEAN bootUpdateFwBootObjects;
     PPH_LIST bootApplicationList;
 
-    if (PhGetIntegerSetting(L"EnableWarnings") && !PhShowConfirmMessage(
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) && !PhShowConfirmMessage(
         WindowHandle,
         L"restart",
         L"the computer",
@@ -1023,8 +1023,8 @@ VOID PhUiHandleComputerBootApplicationMenu(
         return;
     }
 
-    bootEnumerateAllObjects = !!PhGetIntegerSetting(L"EnableBootObjectsEnumerate");
-    bootUpdateFwBootObjects = !!PhGetIntegerSetting(L"EnableUpdateDefaultFirmwareBootEntry");
+    bootEnumerateAllObjects = !!PhGetIntegerSetting(SETTING_ENABLE_BOOT_OBJECTS_ENUMERATE);
+    bootUpdateFwBootObjects = !!PhGetIntegerSetting(SETTING_ENABLE_UPDATE_DEFAULT_FIRMWARE_BOOT_ENTRY);
 
     if (bootApplicationList = PhBcdQueryBootApplicationList(bootEnumerateAllObjects))
     {
@@ -1032,7 +1032,7 @@ VOID PhUiHandleComputerBootApplicationMenu(
         {
             PPH_BCD_OBJECT_LIST entry = bootApplicationList->Items[MenuIndex];
 
-            status = PhBcdSetBootApplicationOneTime(entry->ObjectGuid, bootUpdateFwBootObjects);
+            status = PhBcdSetBootApplicationOneTime(&entry->ObjectGuid, bootUpdateFwBootObjects);
         }
 
         PhBcdDestroyBootApplicationList(bootApplicationList);
@@ -1061,7 +1061,7 @@ VOID PhUiHandleComputerFirmwareApplicationMenu(
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PPH_LIST firmwareApplicationList;
 
-    if (PhGetIntegerSetting(L"EnableWarnings") && !PhShowConfirmMessage(
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) && !PhShowConfirmMessage(
         WindowHandle,
         L"restart",
         L"the computer",
@@ -1078,7 +1078,7 @@ VOID PhUiHandleComputerFirmwareApplicationMenu(
         {
             PPH_BCD_OBJECT_LIST entry = firmwareApplicationList->Items[MenuIndex];
 
-            status = PhBcdSetFirmwareBootApplicationOneTime(entry->ObjectGuid);
+            status = PhBcdSetFirmwareBootApplicationOneTime(&entry->ObjectGuid);
         }
 
         PhBcdDestroyBootApplicationList(firmwareApplicationList);
@@ -1106,9 +1106,9 @@ typedef struct _PHP_USERSMENU_ENTRY
 } PHP_USERSMENU_ENTRY, *PPHP_USERSMENU_ENTRY;
 
 static int __cdecl PhpUsersMainMenuNameCompare(
-    _In_ const void* Context,
-    _In_ const void *elem1,
-    _In_ const void *elem2
+    _In_ void* Context,
+    _In_ void const* elem1,
+    _In_ void const* elem2
     )
 {
     PPHP_USERSMENU_ENTRY item1 = *(PPHP_USERSMENU_ENTRY*)elem1;
@@ -1301,7 +1301,7 @@ BOOLEAN PhUiLogoffSession(
     _In_ ULONG SessionId
     )
 {
-    if (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+    if (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
         WindowHandle,
         L"logoff",
         L"the user",
@@ -1374,12 +1374,14 @@ BOOLEAN PhIsDangerousProcess(
     return FALSE;
 }
 
+#if defined(PH_TS_IS_SYSTEM_PROCESS)
 typedef struct _PH_IS_SYSTEM_PROCESS_CONTEXT
 {
     PPH_STRING BaseName;
     BOOLEAN Found;
 } PH_IS_SYSTEM_PROCESS_CONTEXT, *PPH_IS_SYSTEM_PROCESS_CONTEXT;
 
+_Function_class_(PH_ENUM_KEY_CALLBACK)
 static BOOLEAN NTAPI PhIsSystemProcessCallback(
     _In_ HANDLE RootDirectory,
     _In_ PKEY_VALUE_FULL_INFORMATION Information,
@@ -1427,7 +1429,7 @@ BOOLEAN PhIsTerminalServerSystemProcess(
     if (NT_SUCCESS(PhOpenKey(
         &keyHandle,
         KEY_READ,
-        PH_KEY_CURRENT_USER,
+        PH_KEY_LOCAL_MACHINE,
         &keyName,
         0
         )))
@@ -1457,6 +1459,7 @@ BOOLEAN PhIsTerminalServerSystemProcess(
     PhDereferenceObject(fileName);
     return FALSE;
 }
+#endif
 
 /**
  * Checks if the user wants to proceed with an operation.
@@ -1470,7 +1473,6 @@ BOOLEAN PhIsTerminalServerSystemProcess(
  * FALSE to always show the confirmation dialog.
  * \param Processes An array of pointers to process items.
  * \param NumberOfProcesses The number of process items.
- *
  * \return TRUE if the user wants to proceed with the operation,
  * otherwise FALSE.
  */
@@ -1521,7 +1523,7 @@ static BOOLEAN PhpShowContinueMessageProcesses(
     if (WarnOnlyIfDangerous && !dangerous)
         return TRUE;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         if (NumberOfProcesses == 1)
         {
@@ -1847,7 +1849,7 @@ BOOLEAN PhUiTerminateTreeProcess(
     BOOLEAN cont = FALSE;
     PVOID processes;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         cont = PhShowConfirmMessage(
             WindowHandle,
@@ -2044,7 +2046,7 @@ BOOLEAN PhUiSuspendTreeProcess(
     BOOLEAN result;
     PVOID processes;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         result = PhShowConfirmMessage(
             WindowHandle,
@@ -2241,7 +2243,7 @@ BOOLEAN PhUiResumeTreeProcess(
     BOOLEAN result;
     PVOID processes;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         result = PhShowConfirmMessage(
             WindowHandle,
@@ -2283,7 +2285,7 @@ BOOLEAN PhUiFreezeTreeProcess(
     if (ReadPointerAcquire(&Process->FreezeHandle))
         return FALSE;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         result = PhShowConfirmMessage(
             WindowHandle,
@@ -2301,7 +2303,7 @@ BOOLEAN PhUiFreezeTreeProcess(
     if (!result)
         return FALSE;
 
-    status = PhFreezeProcess(
+    status = PhFreezeProcessById(
         &freezeHandle,
         Process->ProcessId
         );
@@ -2331,7 +2333,7 @@ BOOLEAN PhUiThawTreeProcess(
     if (!ReadPointerAcquire(&Process->FreezeHandle))
         return FALSE;
 
-    status = PhThawProcess(
+    status = PhThawProcessById(
         Process->FreezeHandle,
         Process->ProcessId
         );
@@ -2375,7 +2377,7 @@ BOOLEAN PhUiRestartProcess(
     PVOID environmentBuffer = NULL;
     ULONG environmentLength;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         result = PhShowConfirmMessage(
             WindowHandle,
@@ -2730,7 +2732,7 @@ BOOLEAN PhUiDebugProcess(
     PH_STRINGREF commandPart;
     PH_STRINGREF dummy;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         result = PhShowConfirmMessage(
             WindowHandle,
@@ -3021,7 +3023,7 @@ BOOLEAN PhUiSetVirtualizationProcess(
     HANDLE processHandle;
     HANDLE tokenHandle;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         cont = PhShowConfirmMessage(
             WindowHandle,
@@ -3092,7 +3094,7 @@ BOOLEAN PhUiSetCriticalProcess(
 
         if (NT_SUCCESS(status))
         {
-            if (!breakOnTermination && (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+            if (!breakOnTermination && (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
                 WindowHandle,
                 L"enable",
                 L"critical status on the process",
@@ -3102,7 +3104,7 @@ BOOLEAN PhUiSetCriticalProcess(
             {
                 status = PhSetProcessBreakOnTermination(processHandle, TRUE);
             }
-            else if (breakOnTermination && (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+            else if (breakOnTermination && (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
                 WindowHandle,
                 L"disable",
                 L"critical status on the process",
@@ -3155,7 +3157,7 @@ BOOLEAN PhUiSetEcoModeProcess(
                 FlagOn(powerThrottlingState.StateMask, POWER_THROTTLING_PROCESS_EXECUTION_SPEED)
                 ))
             {
-                if (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+                if (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
                     WindowHandle,
                     L"enable",
                     L"Eco mode for this process",
@@ -3178,7 +3180,7 @@ BOOLEAN PhUiSetEcoModeProcess(
             }
             else
             {
-                //if (!PhGetIntegerSetting(L"EnableWarnings") || PhShowConfirmMessage(
+                //if (!PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) || PhShowConfirmMessage(
                 //    WindowHandle,
                 //    L"disable",
                 //    L"Eco mode for this process",
@@ -3218,7 +3220,7 @@ BOOLEAN PhUiSetExecutionRequiredProcess(
 {
     NTSTATUS status;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         if (!PhShowConfirmMessage(
             WindowHandle,
@@ -3356,7 +3358,6 @@ BOOLEAN PhUiLoadDllProcess(
         status = PhLoadDllProcess(
             processHandle,
             &fileName->sr,
-            FALSE,
             5000
             );
 
@@ -4174,7 +4175,7 @@ HRESULT CALLBACK PhpUiServiceInitializeDialogCallbackProc(
             PhSetWindowProcedure(WindowHandle, PhpUiServiceProgressDialogWndProc);
 
             if (
-                PhGetIntegerSetting(L"EnableWarnings") &&
+                PhGetIntegerSetting(SETTING_ENABLE_WARNINGS) &&
                 context->ActionCommand != PhSvcControlServiceStart
                 )
             {
@@ -4185,7 +4186,7 @@ HRESULT CALLBACK PhpUiServiceInitializeDialogCallbackProc(
                 PhShowServiceProgressDialogStatusPage(context);
             }
 
-            PhInitializeWindowTheme(WindowHandle, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(WindowHandle, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     }
@@ -4294,7 +4295,7 @@ static BOOLEAN PhpShowContinueMessageServices(
     if (NumberOfServices == 0)
         return FALSE;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         PCWSTR object;
 
@@ -4341,6 +4342,7 @@ static BOOLEAN PhpShowErrorService(
         );
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 static NTSTATUS PhUiServiceStartCallback(
     _In_ PPH_SERVICE_ITEM ServiceItem
     )
@@ -4374,7 +4376,7 @@ BOOLEAN PhUiStartServices(
     BOOLEAN cancelled = FALSE;
     ULONG i;
 
-    if (PhGetIntegerSetting(L"EnableServiceProgressDialog"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_SERVICE_PROGRESS_DIALOG))
     {
         PhShowServiceProgressDialog(
             WindowHandle,
@@ -4546,6 +4548,7 @@ BOOLEAN PhUiStartService(
     return success;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 static NTSTATUS PhUiServiceContinueCallback(
     _In_ PPH_SERVICE_ITEM ServiceItem
     )
@@ -4579,7 +4582,7 @@ BOOLEAN PhUiContinueServices(
     BOOLEAN cancelled = FALSE;
     ULONG i;
 
-    if (PhGetIntegerSetting(L"EnableServiceProgressDialog"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_SERVICE_PROGRESS_DIALOG))
     {
         PhShowServiceProgressDialog(
             WindowHandle,
@@ -4753,6 +4756,7 @@ BOOLEAN PhUiContinueService(
     return success;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 static NTSTATUS PhUiServicePauseCallback(
     _In_ PPH_SERVICE_ITEM ServiceItem
     )
@@ -4786,7 +4790,7 @@ BOOLEAN PhUiPauseServices(
     BOOLEAN cancelled = FALSE;
     ULONG i;
 
-    if (PhGetIntegerSetting(L"EnableServiceProgressDialog"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_SERVICE_PROGRESS_DIALOG))
     {
         PhShowServiceProgressDialog(
             WindowHandle,
@@ -4960,6 +4964,7 @@ BOOLEAN PhUiPauseService(
     return success;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 static NTSTATUS PhUiServiceStopCallback(
     _In_ PPH_SERVICE_ITEM ServiceItem
     )
@@ -4993,7 +4998,7 @@ BOOLEAN PhUiStopServices(
     BOOLEAN cancelled = FALSE;
     ULONG i;
 
-    if (PhGetIntegerSetting(L"EnableServiceProgressDialog"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_SERVICE_PROGRESS_DIALOG))
     {
         PhShowServiceProgressDialog(
             WindowHandle,
@@ -5228,6 +5233,7 @@ BOOLEAN PhUiDeleteService(
     return success;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 static NTSTATUS PhUiServiceRestartCallback(
     _In_ PPH_SERVICE_ITEM ServiceItem
 )
@@ -5284,7 +5290,7 @@ BOOLEAN PhUiRestartServices(
     BOOLEAN cancelled = FALSE;
     ULONG i;
 
-    if (PhGetIntegerSetting(L"EnableServiceProgressDialog"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_SERVICE_PROGRESS_DIALOG))
     {
         PhShowServiceProgressDialog(
             WindowHandle,
@@ -5424,10 +5430,15 @@ BOOLEAN PhUiCloseConnections(
 
     for (i = 0; i < NumberOfConnections; i++)
     {
-        if (
-            Connections[i]->ProtocolType != PH_NETWORK_PROTOCOL_TCP4 ||
-            Connections[i]->State != MIB_TCP_STATE_ESTAB
-            )
+        if (Connections[i]->State != MIB_TCP_STATE_ESTAB)
+            continue;
+
+        result = PhSetTcpEntry(Connections[i]);
+
+        if (NT_SUCCESS(result))
+            continue;
+
+        if (Connections[i]->ProtocolType != PH_NETWORK_PROTOCOL_TCP4)
             continue;
 
         tcpRow.dwState = MIB_TCP_STATE_DELETE_TCB;
@@ -5504,7 +5515,7 @@ static BOOLEAN PhpShowContinueMessageThreads(
     if (NumberOfThreads == 0)
         return FALSE;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         if (NumberOfThreads == 1)
         {
@@ -6000,7 +6011,7 @@ BOOLEAN PhUiUnloadModule(
     HANDLE processHandle = NULL;
     BOOLEAN cont = FALSE;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         PWSTR verb;
         PWSTR message;
@@ -6211,7 +6222,7 @@ BOOLEAN PhUiFreeMemory(
     BOOLEAN cont = FALSE;
     HANDLE processHandle;
 
-    if (PhGetIntegerSetting(L"EnableWarnings"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         PWSTR verb;
         PWSTR message;
@@ -6406,7 +6417,7 @@ BOOLEAN PhUiCloseHandles(
     if (NumberOfHandles == 0)
         return FALSE;
 
-    if (Warn && PhGetIntegerSetting(L"EnableWarnings"))
+    if (Warn && PhGetIntegerSetting(SETTING_ENABLE_WARNINGS))
     {
         result = PhShowConfirmMessage(
             WindowHandle,

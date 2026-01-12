@@ -20,14 +20,14 @@
 #include <appresolverp.h>
 #include <appresolver.h>
 
-static __typeof__(&AppContainerDeriveSidFromMoniker) AppContainerDeriveSidFromMoniker_I = NULL;
-static __typeof__(&AppContainerLookupMoniker) AppContainerLookupMoniker_I = NULL;
-static __typeof__(&AppContainerFreeMemory) AppContainerFreeMemory_I = NULL;
+static typeof(&AppContainerDeriveSidFromMoniker) AppContainerDeriveSidFromMoniker_I = NULL;
+static typeof(&AppContainerLookupMoniker) AppContainerLookupMoniker_I = NULL;
+static typeof(&AppContainerFreeMemory) AppContainerFreeMemory_I = NULL;
 
 /**
  * Queries the AppResolver interface.
  *
- * @return A pointer to the AppResolver interface, or NULL if the interface could not be queried.
+ * \return A pointer to the AppResolver interface, or NULL if the interface could not be queried.
  */
 static PVOID PhpQueryAppResolverInterface(
     VOID
@@ -52,7 +52,7 @@ static PVOID PhpQueryAppResolverInterface(
 /**
  * Queries the StartMenuCache interface.
  *
- * @return A pointer to the StartMenuCache interface, or NULL if the interface could not be queried.
+ * \return A pointer to the StartMenuCache interface, or NULL if the interface could not be queried.
  */
 static PVOID PhpQueryStartMenuCacheInterface(
     VOID
@@ -167,7 +167,7 @@ HRESULT PhAppResolverGetAppIdForProcess(
             appIdText
             );
 
-        if ((appIdTextLength & 1) && appIdTextLength > sizeof(UNICODE_NULL))
+        if ((appIdTextLength % sizeof(WCHAR)) == 0 && appIdTextLength > sizeof(UNICODE_NULL))
         {
             *ApplicationUserModelId = PhCreateStringEx(
                 appIdText,
@@ -243,7 +243,7 @@ HRESULT PhAppResolverGetAppIdForWindow(
             appIdText
             );
 
-        if ((appIdTextLength & 1) && appIdTextLength > sizeof(UNICODE_NULL))
+        if ((appIdTextLength % sizeof(WCHAR)) == 0 && appIdTextLength > sizeof(UNICODE_NULL))
         {
             *ApplicationUserModelId = PhCreateStringEx(
                 appIdText,

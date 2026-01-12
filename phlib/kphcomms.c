@@ -14,6 +14,7 @@
 #include <kphcomms.h>
 #include <kphuser.h>
 #include <mapldr.h>
+#include <apiimport.h>
 
 typedef struct _KPH_UMESSAGE
 {
@@ -84,6 +85,7 @@ VOID KphpCommsCallbackUnhandled(
  * \param[in] IoSB Result of the asynchronous I/O operation.
  * \param[in,out] Io Unused
  */
+_Function_class_(TP_IO_CALLBACK)
 VOID WINAPI KphpCommsIoCallback(
     _Inout_ PTP_CALLBACK_INSTANCE Instance,
     _Inout_opt_ PVOID Context,
@@ -131,7 +133,7 @@ VOID WINAPI KphpCommsIoCallback(
 
 QueueIoOperation:
 
-    RtlZeroMemory(&msg->Overlapped, FIELD_OFFSET(OVERLAPPED, hEvent));
+    RtlZeroMemory(&msg->Overlapped, sizeof(OVERLAPPED));
 
     assert(Io == KphpCommsThreadPoolIo);
 
@@ -161,35 +163,6 @@ QueueIoOperation:
     }
 
     PhReleaseRundownProtection(&KphpCommsRundown);
-}
-
-static VOID KphpTpSetPoolThreadBasePriority(
-    _Inout_ PTP_POOL Pool,
-    _In_ ULONG BasePriority
-    )
-{
-    static PH_INITONCE initOnce = PH_INITONCE_INIT;
-    static NTSTATUS (NTAPI* TpSetPoolThreadBasePriority_I)(
-        _Inout_ PTP_POOL Pool,
-        _In_ ULONG BasePriority
-        ) = NULL;
-
-    if (PhBeginInitOnce(&initOnce))
-    {
-        PVOID baseAddress;
-
-        if (baseAddress = PhGetLoaderEntryDllBaseZ(RtlNtdllName))
-        {
-            TpSetPoolThreadBasePriority_I = PhGetDllBaseProcedureAddress(baseAddress, "TpSetPoolThreadBasePriority", 0);
-        }
-
-        PhEndInitOnce(&initOnce);
-    }
-
-    if (TpSetPoolThreadBasePriority_I)
-    {
-        TpSetPoolThreadBasePriority_I(Pool, BasePriority);
-    }
 }
 
 /**
@@ -246,7 +219,9 @@ NTSTATUS KphCommsStart(
 
     TpSetPoolMinThreads(KphpCommsThreadPool, KPH_COMMS_MIN_THREADS);
     TpSetPoolMaxThreads(KphpCommsThreadPool, numberOfThreads);
-    KphpTpSetPoolThreadBasePriority(KphpCommsThreadPool, THREAD_PRIORITY_HIGHEST);
+
+    if (TpSetPoolThreadBasePriority_Import())
+        TpSetPoolThreadBasePriority_Import()(KphpCommsThreadPool, THREAD_PRIORITY_HIGHEST);
 
     TpInitializeCallbackEnviron(&KphpCommsThreadPoolEnv);
     TpSetCallbackNoActivationContext(&KphpCommsThreadPoolEnv);
@@ -274,15 +249,7 @@ NTSTATUS KphCommsStart(
 
     for (ULONG i = 0; i < KphpCommsMessageCount; i++)
     {
-        if (!NT_SUCCESS(status = PhCreateEvent(
-            &KphpCommsMessages[i].Overlapped.hEvent,
-            EVENT_ALL_ACCESS,
-            NotificationEvent,
-            FALSE
-            )))
-            goto CleanupExit;
-
-        RtlZeroMemory(&KphpCommsMessages[i].Overlapped, FIELD_OFFSET(OVERLAPPED, hEvent));
+        RtlZeroMemory(&KphpCommsMessages[i].Overlapped, sizeof(OVERLAPPED));
 
         TpStartAsyncIoOperation(KphpCommsThreadPoolIo);
 
@@ -348,15 +315,6 @@ VOID KphCommsStop(
 
     if (KphpCommsMessages)
     {
-        for (ULONG i = 0; i < KphpCommsMessageCount; i++)
-        {
-            if (KphpCommsMessages[i].Overlapped.hEvent)
-            {
-                NtClose(KphpCommsMessages[i].Overlapped.hEvent);
-                KphpCommsMessages[i].Overlapped.hEvent = NULL;
-            }
-        }
-
         KphpCommsMessageCount = 0;
 
         PhFree(KphpCommsMessages);
@@ -369,7 +327,7 @@ VOID KphCommsStop(
 /**
  * \brief Checks if communications is connected to the driver.
  *
- * @return TRUE if connected, FALSE otherwise.
+ * \return TRUE if connected, FALSE otherwise.
  */
 BOOLEAN KphCommsIsConnected(
     VOID

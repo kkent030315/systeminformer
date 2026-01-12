@@ -96,6 +96,7 @@ PPH_PROCESS_PROPCONTEXT PhCreateProcessPropContext(
     return propContext;
 }
 
+_Function_class_(PH_TYPE_DELETE_PROCEDURE)
 VOID NTAPI PhpProcessPropContextDeleteProcedure(
     _In_ PVOID Object,
     _In_ ULONG Flags
@@ -224,7 +225,7 @@ LRESULT CALLBACK PhpPropSheetWndProc(
 
             // Save the window position and size.
 
-            PhSaveWindowPlacementToSetting(L"ProcPropPosition", L"ProcPropSize", hwnd);
+            PhSaveWindowPlacementToSetting(SETTING_PROC_PROP_POSITION, SETTING_PROC_PROP_SIZE, hwnd);
 
             // Save the selected tab.
 
@@ -236,7 +237,7 @@ LRESULT CALLBACK PhpPropSheetWndProc(
 
             if (TabCtrl_GetItem(tabControl, TabCtrl_GetCurSel(tabControl), &tabItem))
             {
-                PhSetStringSetting(L"ProcPropPage", text);
+                PhSetStringSetting(SETTING_PROC_PROP_PAGE, text);
             }
         }
         break;
@@ -330,6 +331,9 @@ LRESULT CALLBACK PhpPropSheetWndProc(
 
             CallWindowProc(oldWndProc, hwnd, uMsg, wParam, lParam);
 
+            PhLayoutManagerUpdate(&propSheetContext->LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&propSheetContext->LayoutManager);
+
             {
                 SetWindowPos(
                     hwnd,
@@ -400,12 +404,12 @@ VOID PhpInitializePropSheetLayoutStage2(
     RECT rect;
     LONG dpiValue;
 
-    PhLoadWindowPlacementFromSetting(L"ProcPropPosition", L"ProcPropSize", hwnd);
+    PhLoadWindowPlacementFromSetting(SETTING_PROC_PROP_POSITION, SETTING_PROC_PROP_SIZE, hwnd);
 
-    windowRectangle.Position = PhGetIntegerPairSetting(L"ProcPropPosition");
+    windowRectangle.Position = PhGetIntegerPairSetting(SETTING_PROC_PROP_POSITION);
     PhRectangleToRect(&rect, &windowRectangle);
-    dpiValue = PhGetMonitorDpi(&rect);
-    windowRectangle.Size = PhGetScalableIntegerPairSetting(L"ProcPropSize", TRUE, dpiValue)->Pair;
+    dpiValue = PhGetMonitorDpi(NULL, &rect);
+    windowRectangle.Size = PhGetScalableIntegerPairSetting(SETTING_PROC_PROP_SIZE, TRUE, dpiValue)->Pair;
 
     if (windowRectangle.Size.X < MinimumSize.right)
         windowRectangle.Size.X = MinimumSize.right;
@@ -417,7 +421,7 @@ VOID PhpInitializePropSheetLayoutStage2(
     // Implement cascading by saving an offsetted rectangle.
     windowRectangle.Left += 20;
     windowRectangle.Top += 20;
-    PhSetIntegerPairSetting(L"ProcPropPosition", windowRectangle.Position);
+    PhSetIntegerPairSetting(SETTING_PROC_PROP_POSITION, windowRectangle.Position);
 }
 
 BOOLEAN PhAddProcessPropPage(
@@ -491,6 +495,7 @@ PPH_PROCESS_PROPPAGECONTEXT PhCreateProcessPropPageContextEx(
     return propPageContext;
 }
 
+_Function_class_(PH_TYPE_DELETE_PROCEDURE)
 VOID NTAPI PhpProcessPropPageContextDeleteProcedure(
     _In_ PVOID Object,
     _In_ ULONG Flags
@@ -502,7 +507,7 @@ VOID NTAPI PhpProcessPropPageContextDeleteProcedure(
         PhDereferenceObject(propPageContext->PropContext);
 }
 
-INT CALLBACK PhpStandardPropPageProc(
+UINT CALLBACK PhpStandardPropPageProc(
     _In_ HWND hwnd,
     _In_ UINT uMsg,
     _In_ LPPROPSHEETPAGE ppsp
@@ -520,6 +525,7 @@ INT CALLBACK PhpStandardPropPageProc(
     return 1;
 }
 
+_Function_class_(PH_TYPE_DELETE_PROCEDURE)
 VOID NTAPI PhpProcessPropPageWaitContextDeleteProcedure(
     _In_ PVOID Object,
     _In_ ULONG Flags
@@ -580,7 +586,7 @@ VOID PhpCreateProcessPropSheetWaitContext(
         PhpProcessPropertiesWaitCallback,
         waitContext,
         INFINITE,
-        WT_EXECUTEONLYONCE | WT_EXECUTEINWAITTHREAD | WT_EXECUTELONGFUNCTION
+        WT_EXECUTEONLYONCE | WT_EXECUTEINWAITTHREAD
         )))
     {
         PropContext->ProcessWaitContext = waitContext;
@@ -791,16 +797,16 @@ PPH_LAYOUT_ITEM PhAddPropPageLayoutItem(
         MapDialogRect(hwnd, &dialogSize);
 
         // Get the original dialog rectangle.
-        GetWindowRect(hwnd, &dialogRect);
+        PhGetWindowRect(hwnd, &dialogRect);
         dialogRect.right = dialogRect.left + dialogSize.right;
         dialogRect.bottom = dialogRect.top + dialogSize.bottom;
 
         // Calculate the margin from the original rectangle.
-        GetWindowRect(Handle, &margin);
+        PhGetWindowRect(Handle, &margin);
         PhMapRect(&margin, &margin, &dialogRect);
         PhConvertRect(&margin, &dialogRect);
 
-        item = PhAddLayoutItemEx(layoutManager, Handle, realParentItem, Anchor, margin);
+        item = PhAddLayoutItemEx(layoutManager, Handle, realParentItem, Anchor, &margin);
     }
     else
     {
@@ -981,11 +987,13 @@ NTSTATUS PhpProcessPropertiesThreadStart(
     // Create the property sheet
 
     if (PropContext->SelectThreadId)
-        PhSetStringSetting(L"ProcPropPage", L"Threads");
+    {
+        PhSetStringSetting(SETTING_PROC_PROP_PAGE, L"Threads");
+    }
 
-    startPage = PhGetStringSetting(L"ProcPropPage");
+    startPage = PhGetStringSetting(SETTING_PROC_PROP_PAGE);
     PropContext->PropSheetHeader.dwFlags |= PSH_USEPSTARTPAGE;
-    PropContext->PropSheetHeader.pStartPage = startPage->Buffer;
+    PropContext->PropSheetHeader.pStartPage = PhGetString(startPage);
 
     PhModalPropertySheet(&PropContext->PropSheetHeader);
 

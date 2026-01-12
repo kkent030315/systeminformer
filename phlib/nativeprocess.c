@@ -68,6 +68,14 @@ NTSTATUS PhOpenProcess(
     return status;
 }
 
+/**
+ * Opens a process handle using a CLIENT_ID structure.
+ *
+ * \param ProcessHandle A variable which receives a handle to the process.
+ * \param DesiredAccess The desired access rights for the process handle.
+ * \param ClientId A pointer to a CLIENT_ID structure that specifies the process and (optionally) thread.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhOpenProcessClientId(
     _Out_ PHANDLE ProcessHandle,
     _In_ ACCESS_MASK DesiredAccess,
@@ -112,6 +120,14 @@ NTSTATUS PhOpenProcessClientId(
 }
 
 /** Limited API for untrusted/external code. */
+/**
+ * Opens a process with limited access for untrusted or external code.
+ *
+ * \param ProcessHandle A variable which receives a handle to the process.
+ * \param DesiredAccess The desired access rights for the process handle.
+ * \param ProcessId The unique identifier (PID) of the process to open.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhOpenProcessPublic(
     _Out_ PHANDLE ProcessHandle,
     _In_ ACCESS_MASK DesiredAccess,
@@ -205,6 +221,763 @@ NTSTATUS PhResumeProcess(
 }
 
 /**
+ * Gets basic information for a process.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have
+ * PROCESS_QUERY_LIMITED_INFORMATION access.
+ * \param BasicInformation A variable which receives the information.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetProcessBasicInformation(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PPROCESS_BASIC_INFORMATION BasicInformation
+    )
+{
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessBasicInformation,
+        BasicInformation,
+        sizeof(PROCESS_BASIC_INFORMATION),
+        NULL
+        );
+}
+
+/**
+ * Gets extended basic information for a process.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have
+ * PROCESS_QUERY_LIMITED_INFORMATION access.
+ * \param ExtendedBasicInformation A variable which receives the information.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetProcessExtendedBasicInformation(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PPROCESS_EXTENDED_BASIC_INFORMATION ExtendedBasicInformation
+    )
+{
+    ExtendedBasicInformation->Size = sizeof(PROCESS_EXTENDED_BASIC_INFORMATION);
+
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessBasicInformation,
+        ExtendedBasicInformation,
+        sizeof(PROCESS_EXTENDED_BASIC_INFORMATION),
+        NULL
+        );
+}
+
+/**
+ * Gets time information for a process.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have
+ * PROCESS_QUERY_LIMITED_INFORMATION access.
+ * \param Times A variable which receives the information.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetProcessTimes(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PKERNEL_USER_TIMES Times
+    )
+{
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessTimes,
+        Times,
+        sizeof(KERNEL_USER_TIMES),
+        NULL
+        );
+}
+
+/**
+ * Gets a process' session ID.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have
+ * PROCESS_QUERY_LIMITED_INFORMATION access.
+ * \param SessionId A variable which receives the process' session ID.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetProcessSessionId(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PULONG SessionId
+    )
+{
+    NTSTATUS status;
+    PROCESS_SESSION_INFORMATION sessionInfo;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessSessionInformation,
+        &sessionInfo,
+        sizeof(PROCESS_SESSION_INFORMATION),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *SessionId = sessionInfo.SessionId;
+    }
+
+    return status;
+}
+
+/**
+ * Gets whether a process is running under 32-bit emulation.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have
+ * PROCESS_QUERY_LIMITED_INFORMATION access.
+ * \param IsWow64Process A variable which receives a boolean indicating whether the process is 32-bit.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetProcessIsWow64(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PBOOLEAN IsWow64Process
+    )
+{
+    NTSTATUS status;
+    ULONG_PTR wow64;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessWow64Information,
+        &wow64,
+        sizeof(ULONG_PTR),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *IsWow64Process = !!wow64;
+    }
+
+    return status;
+}
+
+/**
+ * Gets a process' WOW64 PEB address.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have
+ * PROCESS_QUERY_LIMITED_INFORMATION access.
+ * \param Peb32 A variable which receives the base address of the process' WOW64 PEB. If the process
+ * is 64-bit, the variable receives NULL.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetProcessPeb32(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PVOID* Peb32
+    )
+{
+    NTSTATUS status;
+    ULONG_PTR wow64;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessWow64Information,
+        &wow64,
+        sizeof(ULONG_PTR),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        // No PEB for System, Minimal or Pico processes. (dmex)
+        if (!wow64)
+            return STATUS_UNSUCCESSFUL;
+
+        *Peb32 = (PVOID)wow64;
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessPeb(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PVOID* PebBaseAddress
+    )
+{
+    NTSTATUS status;
+    PROCESS_BASIC_INFORMATION basicInfo;
+
+    status = PhGetProcessBasicInformation(ProcessHandle, &basicInfo);
+
+    if (NT_SUCCESS(status))
+    {
+        // No PEB for System, Minimal or Pico processes. (dmex)
+        if (!basicInfo.PebBaseAddress)
+            return STATUS_UNSUCCESSFUL;
+
+        *PebBaseAddress = (PVOID)basicInfo.PebBaseAddress;
+    }
+
+    return status;
+}
+
+/**
+ * Gets a handle to a process' debug object.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have PROCESS_QUERY_INFORMATION access.
+ * \param DebugObjectHandle A variable which receives a handle to the debug object associated with
+ * the process. You must close the handle when you no longer need it.
+ * \return Successful or errant status.
+ * \retval STATUS_PORT_NOT_SET The process is not being debugged and has no associated debug object.
+ */
+NTSTATUS PhGetProcessDebugObject(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PHANDLE DebugObjectHandle
+    )
+{
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessDebugObjectHandle,
+        DebugObjectHandle,
+        sizeof(HANDLE),
+        NULL
+        );
+}
+
+NTSTATUS PhGetProcessEnergyValues(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PPROCESS_EXTENDED_ENERGY_VALUES EnergyValues
+    )
+{
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessEnergyValues,
+        EnergyValues,
+        sizeof(PROCESS_EXTENDED_ENERGY_VALUES),
+        NULL
+        );
+}
+
+NTSTATUS PhGetProcessErrorMode(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PULONG ErrorMode
+    )
+{
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessDefaultHardErrorMode,
+        ErrorMode,
+        sizeof(ULONG),
+        NULL
+        );
+}
+
+/**
+ * Sets the error mode for a process.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have PROCESS_SET_INFORMATION access.
+ * \param ErrorMode The error mode to set for the process.
+ * \return STATUS_SUCCESS if the error mode was successfully set, otherwise an appropriate NTSTATUS error code.
+ */
+NTSTATUS PhSetProcessErrorMode(
+    _In_ HANDLE ProcessHandle,
+    _In_ ULONG ErrorMode
+    )
+{
+    return NtSetInformationProcess(
+        ProcessHandle,
+        ProcessDefaultHardErrorMode,
+        &ErrorMode,
+        sizeof(ULONG)
+        );
+}
+
+/**
+ * Gets a process' no-execute status.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have PROCESS_QUERY_INFORMATION access.
+ * \param ExecuteFlags A variable which receives the no-execute flags.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetProcessExecuteFlags(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PULONG ExecuteFlags
+    )
+{
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessExecuteFlags,
+        ExecuteFlags,
+        sizeof(ULONG),
+        NULL
+        );
+}
+
+/**
+ * Gets a process' I/O priority.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have
+ * PROCESS_QUERY_LIMITED_INFORMATION access.
+ * \param IoPriority A variable which receives the I/O priority of the process.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetProcessIoPriority(
+    _In_ HANDLE ProcessHandle,
+    _Out_ IO_PRIORITY_HINT *IoPriority
+    )
+{
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessIoPriority,
+        IoPriority,
+        sizeof(IO_PRIORITY_HINT),
+        NULL
+        );
+}
+
+/**
+ * Gets a process' page priority.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have
+ * PROCESS_QUERY_LIMITED_INFORMATION access.
+ * \param PagePriority A variable which receives the page priority of the process.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetProcessPagePriority(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PULONG PagePriority
+    )
+{
+    NTSTATUS status;
+    PAGE_PRIORITY_INFORMATION pagePriorityInfo;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessPagePriority,
+        &pagePriorityInfo,
+        sizeof(PAGE_PRIORITY_INFORMATION),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *PagePriority = pagePriorityInfo.PagePriority;
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessPriorityBoost(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PBOOLEAN PriorityBoostDisabled
+    )
+{
+    NTSTATUS status;
+    ULONG priorityBoostDisabled;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessPriorityBoost,
+        &priorityBoostDisabled,
+        sizeof(ULONG),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *PriorityBoostDisabled = !!priorityBoostDisabled;
+    }
+
+    return status;
+}
+
+/**
+ * Gets a process' cycle count.
+ *
+ * \param ProcessHandle A handle to a process. The handle must have
+ * PROCESS_QUERY_LIMITED_INFORMATION access.
+ * \param CycleTime A variable which receives the 64-bit cycle time.
+ * \return Successful or errant status.
+ */
+NTSTATUS PhGetProcessCycleTime(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PULONG64 CycleTime
+    )
+{
+    NTSTATUS status;
+    PROCESS_CYCLE_TIME_INFORMATION cycleTimeInfo;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessCycleTime,
+        &cycleTimeInfo,
+        sizeof(PROCESS_CYCLE_TIME_INFORMATION),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *CycleTime = cycleTimeInfo.AccumulatedCycles;
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessUptime(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PPROCESS_UPTIME_INFORMATION Uptime
+    )
+{
+    NTSTATUS status;
+    PROCESS_UPTIME_INFORMATION uptimeInfo;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessUptimeInformation,
+        &uptimeInfo,
+        sizeof(PROCESS_UPTIME_INFORMATION),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *Uptime = uptimeInfo;
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessConsoleHostProcessId(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PHANDLE ConsoleHostProcessId
+    )
+{
+    NTSTATUS status;
+    ULONG_PTR consoleHostProcess;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessConsoleHostProcess,
+        &consoleHostProcess,
+        sizeof(ULONG_PTR),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *ConsoleHostProcessId = (HANDLE)consoleHostProcess;
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessConsoleHostProcess(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PHANDLE ConsoleHostProcessId,
+    _Out_opt_ PBOOLEAN ConsoleApplication
+    )
+{
+    NTSTATUS status;
+    ULONG_PTR consoleHostProcess;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessConsoleHostProcess,
+        &consoleHostProcess,
+        sizeof(ULONG_PTR),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *ConsoleHostProcessId = (HANDLE)(consoleHostProcess & ~3);
+    }
+
+    if (ConsoleApplication)
+    {
+        *ConsoleApplication = !!(ULONG_PTR)(consoleHostProcess & 2);
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessProtection(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PPS_PROTECTION Protection
+    )
+{
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessProtectionInformation,
+        Protection,
+        sizeof(PS_PROTECTION),
+        NULL
+        );
+}
+
+NTSTATUS PhGetProcessAffinityMask(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PKAFFINITY AffinityMask
+    )
+{
+    NTSTATUS status;
+    KAFFINITY affinityMask;
+
+    memset(&affinityMask, 0, sizeof(KAFFINITY));
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessAffinityMask,
+        &affinityMask,
+        sizeof(KAFFINITY),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *AffinityMask = affinityMask;
+    }
+    else // Windows 7 (dmex)
+    {
+        PROCESS_BASIC_INFORMATION basicInfo;
+
+        if (NT_SUCCESS(PhGetProcessBasicInformation(ProcessHandle, &basicInfo)))
+        {
+            *AffinityMask = basicInfo.AffinityMask;
+            return STATUS_SUCCESS;
+        }
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessGroupInformation(
+    _In_ HANDLE ProcessHandle,
+    _Inout_ PUSHORT GroupCount,
+    _Out_ PUSHORT GroupArray
+    )
+{
+    NTSTATUS status;
+    ULONG returnLength;
+
+    // rev from GetProcessGroupAffinity (dmex)
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessGroupInformation,
+        GroupArray,
+        sizeof(USHORT) * *GroupCount,
+        &returnLength
+        );
+
+    if (NT_SUCCESS(status) || status == STATUS_BUFFER_TOO_SMALL)
+    {
+        *GroupCount = (USHORT)returnLength / sizeof(USHORT); // (USHORT)returnLength >> 1
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessGroupAffinity(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PGROUP_AFFINITY GroupAffinity
+    )
+{
+    NTSTATUS status;
+    GROUP_AFFINITY groupAffinity;
+
+    memset(&groupAffinity, 0, sizeof(GROUP_AFFINITY));
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessAffinityMask,
+        &groupAffinity,
+        sizeof(GROUP_AFFINITY),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        memcpy(GroupAffinity, &groupAffinity, sizeof(GROUP_AFFINITY));
+    }
+    else // Windows 7 (dmex)
+    {
+        KAFFINITY affinityMask;
+
+        if (NT_SUCCESS(PhGetProcessAffinityMask(ProcessHandle, &affinityMask)))
+        {
+            groupAffinity.Mask = affinityMask;
+            memcpy(GroupAffinity, &groupAffinity, sizeof(GROUP_AFFINITY));
+            return STATUS_SUCCESS;
+        }
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessIsCFGuardEnabled(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PBOOLEAN IsControlFlowGuardEnabled
+    )
+{
+    NTSTATUS status;
+    PROCESS_MITIGATION_POLICY_INFORMATION policyInfo;
+
+    policyInfo.Policy = ProcessControlFlowGuardPolicy;
+    policyInfo.ControlFlowGuardPolicy.Flags = 0;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessMitigationPolicy,
+        &policyInfo,
+        sizeof(PROCESS_MITIGATION_POLICY_INFORMATION),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *IsControlFlowGuardEnabled = !!policyInfo.ControlFlowGuardPolicy.EnableControlFlowGuard;
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessIsXFGuardEnabled(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PBOOLEAN IsXFGuardEnabled,
+    _Out_ PBOOLEAN IsXFGuardAuditEnabled
+    )
+{
+    NTSTATUS status;
+    PROCESS_MITIGATION_POLICY_INFORMATION policyInfo;
+
+    policyInfo.Policy = ProcessControlFlowGuardPolicy;
+    policyInfo.ControlFlowGuardPolicy.Flags = 0;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessMitigationPolicy,
+        &policyInfo,
+        sizeof(PROCESS_MITIGATION_POLICY_INFORMATION),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+#if !defined(NTDDI_WIN10_CO) || (NTDDI_VERSION < NTDDI_WIN10_CO)
+        *IsXFGuardEnabled = _bittest((const PLONG)&policyInfo.ControlFlowGuardPolicy.Flags, 3);
+        *IsXFGuardAuditEnabled = _bittest((const PLONG)&policyInfo.ControlFlowGuardPolicy.Flags, 4);
+#else
+        *IsXFGuardEnabled = !!policyInfo.ControlFlowGuardPolicy.EnableXfg;
+        *IsXFGuardAuditEnabled = !!policyInfo.ControlFlowGuardPolicy.EnableXfgAuditMode;
+#endif
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessHandleCount(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PPROCESS_HANDLE_INFORMATION HandleInfo
+    )
+{
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessHandleCount,
+        HandleInfo,
+        sizeof(PROCESS_HANDLE_INFORMATION),
+        NULL
+        );
+}
+
+NTSTATUS PhGetProcessBreakOnTermination(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PBOOLEAN BreakOnTermination
+    )
+{
+    NTSTATUS status;
+    ULONG breakOnTermination;
+
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessBreakOnTermination,
+        &breakOnTermination,
+        sizeof(ULONG),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *BreakOnTermination = !!breakOnTermination;
+    }
+
+    return status;
+}
+
+NTSTATUS PhSetProcessBreakOnTermination(
+    _In_ HANDLE ProcessHandle,
+    _In_ BOOLEAN BreakOnTermination
+    )
+{
+    ULONG breakOnTermination;
+
+    breakOnTermination = BreakOnTermination ? 1 : 0;
+
+    return NtSetInformationProcess(
+        ProcessHandle,
+        ProcessBreakOnTermination,
+        &breakOnTermination,
+        sizeof(ULONG)
+        );
+}
+
+NTSTATUS PhGetProcessAppMemoryInformation(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PPROCESS_JOB_MEMORY_INFO JobMemoryInfo
+    )
+{
+    NTSTATUS status;
+    PROCESS_JOB_MEMORY_INFO jobMemoryInfo;
+
+    // Win32 called this ProcessAppMemoryInfo with APP_MEMORY_INFORMATION struct (dmex)
+    status = NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessJobMemoryInformation,
+        &jobMemoryInfo,
+        sizeof(PROCESS_JOB_MEMORY_INFO),
+        NULL
+        );
+
+    if (NT_SUCCESS(status))
+    {
+        *JobMemoryInfo = jobMemoryInfo;
+    }
+
+    return status;
+}
+
+NTSTATUS PhGetProcessMitigationPolicy(
+    _In_ HANDLE ProcessHandle,
+    _In_ PROCESS_MITIGATION_POLICY Policy,
+    _Out_ PPROCESS_MITIGATION_POLICY_INFORMATION MitigationPolicy
+    )
+{
+    memset(MitigationPolicy, 0, sizeof(PROCESS_MITIGATION_POLICY_INFORMATION));
+    MitigationPolicy->Policy = Policy;
+
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessMitigationPolicy,
+        MitigationPolicy,
+        sizeof(PROCESS_MITIGATION_POLICY_INFORMATION),
+        NULL
+        );
+}
+
+NTSTATUS PhGetProcessNetworkIoCounters(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PPROCESS_NETWORK_COUNTERS NetworkIoCounters
+    )
+{
+    return NtQueryInformationProcess(
+        ProcessHandle,
+        ProcessNetworkIoCounters,
+        NetworkIoCounters,
+        sizeof(PROCESS_NETWORK_COUNTERS),
+        NULL
+        );
+}
+
+/**
  * Queries variable-sized information for a process. The function allocates a buffer to contain the
  * information.
  *
@@ -234,7 +1007,10 @@ NTSTATUS PhpQueryProcessVariableSize(
         );
 
     if (status != STATUS_BUFFER_OVERFLOW && status != STATUS_BUFFER_TOO_SMALL && status != STATUS_INFO_LENGTH_MISMATCH)
+    {
+        *Buffer = NULL;
         return status;
+    }
 
     buffer = PhAllocate(returnLength);
     status = NtQueryInformationProcess(
@@ -252,11 +1028,23 @@ NTSTATUS PhpQueryProcessVariableSize(
     else
     {
         PhFree(buffer);
+        *Buffer = NULL;
     }
 
     return status;
 }
 
+/**
+ * Gets the cookie of the process.
+ * A ProcessCookie is a per-process random value generated by the Windows kernel.
+ * Its main purpose is to help protect against certain types of security attacks,
+ * such as handle prediction and spoofing. By associating a unique, unpredictable
+ * cookie with each process, the system can use it as part of internal validation
+ * checks-making it harder for malicious code to guess or forge process information.
+ * \param ProcessHandle Handle to the process for which the cookie is retrieved.
+ * \param ProcessModifiedCookie Pointer to a ULONG that receives the modified process cookie.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessModifiedCookie(
     _In_ HANDLE ProcessHandle,
     _Out_ PULONG ProcessModifiedCookie
@@ -300,7 +1088,7 @@ NTSTATUS PhGetProcessImageFileName(
     ULONG bufferLength;
     ULONG returnLength = 0;
 
-    bufferLength = sizeof(UNICODE_STRING) + DOS_MAX_PATH_LENGTH;
+    bufferLength = sizeof(UNICODE_STRING) + DOS_MAX_PATH_LENGTH * sizeof(WCHAR);
     fileName = PhAllocateStack(bufferLength);
     if (!fileName) return STATUS_NO_MEMORY;
 
@@ -329,7 +1117,10 @@ NTSTATUS PhGetProcessImageFileName(
     }
 
     if (!NT_SUCCESS(status))
+    {
+        PhFreeStack(fileName);
         return status;
+    }
 
     // Note: Some minimal/pico processes have UNICODE_NULL as their filename. (dmex)
     if (RtlIsNullOrEmptyUnicodeString(fileName))
@@ -364,7 +1155,7 @@ NTSTATUS PhGetProcessImageFileNameWin32(
     ULONG bufferLength;
     ULONG returnLength = 0;
 
-    bufferLength = sizeof(UNICODE_STRING) + DOS_MAX_PATH_LENGTH;
+    bufferLength = sizeof(UNICODE_STRING) + DOS_MAX_PATH_LENGTH * sizeof(WCHAR);
     fileName = PhAllocateStack(bufferLength);
     if (!fileName) return STATUS_NO_MEMORY;
 
@@ -642,6 +1433,67 @@ NTSTATUS PhGetProcessIsBeingDebugged(
     return status;
 }
 
+/**
+ * Determines if a process has started termination.
+ *
+ * \param[in] ProcessHandle A handle to the process whose termination state is to be retrieved.
+ * \param[out] IsTerminated A pointer to a variable that receives the termination state (TRUE if terminated).
+ * \return Successful or errant status.
+ * \remarks The handle must have PROCESS_QUERY_LIMITED_INFORMATION access.
+ */
+NTSTATUS PhGetProcessIsTerminating(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PBOOLEAN IsTerminated
+    )
+{
+    NTSTATUS status;
+    PROCESS_EXTENDED_BASIC_INFORMATION basicInfo;
+
+    status = PhGetProcessExtendedBasicInformation(ProcessHandle, &basicInfo);
+
+    if (NT_SUCCESS(status))
+    {
+        *IsTerminated = !!basicInfo.IsProcessDeleting;
+    }
+
+    return status;
+}
+
+/**
+ * Determines if a process has terminated by waiting with zero timeout.
+ *
+ * \param[in] ProcessHandle A handle to the process.
+ * \return TRUE if the process is terminated, FALSE otherwise.
+ * \remarks The handle must have SYNCRONIZE access.
+ */
+NTSTATUS PhGetProcessIsTerminated(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PBOOLEAN IsTerminated
+    )
+{
+    NTSTATUS status;
+    LARGE_INTEGER timeout;
+
+    memset(&timeout, 0, sizeof(LARGE_INTEGER));
+
+    status = NtWaitForSingleObject(
+        ProcessHandle,
+        FALSE,
+        &timeout
+        );
+
+    *IsTerminated = status == STATUS_WAIT_0;
+
+    return status;
+}
+
+/**
+ * Retrieves the device map for a specified process.
+ *
+ * \param ProcessHandle Handle to the process whose device map is to be queried.
+ * \param DeviceMap Pointer to a ULONG that receives the device map value.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessDeviceMap(
     _In_ HANDLE ProcessHandle,
     _Out_ PULONG DeviceMap
@@ -687,7 +1539,7 @@ NTSTATUS PhGetProcessDeviceMap(
  */
 NTSTATUS PhGetProcessPebString(
     _In_ HANDLE ProcessHandle,
-    _In_ ULONG Offset,
+    _In_ PH_PEB_OFFSET Offset,
     _Out_ PPH_STRING *String
     )
 {
@@ -724,7 +1576,7 @@ NTSTATUS PhGetProcessPebString(
             return status;
 
         // Read the address of the process parameters.
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress, FIELD_OFFSET(PEB, ProcessParameters)),
             &processParameters,
@@ -734,7 +1586,7 @@ NTSTATUS PhGetProcessPebString(
             return status;
 
         // Read the string structure.
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(processParameters, offset),
             &unicodeString,
@@ -752,7 +1604,7 @@ NTSTATUS PhGetProcessPebString(
         string = PhCreateStringEx(NULL, unicodeString.Length);
 
         // Read the string contents.
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             unicodeString.Buffer,
             string->Buffer,
@@ -773,7 +1625,7 @@ NTSTATUS PhGetProcessPebString(
         if (!NT_SUCCESS(status = PhGetProcessPeb32(ProcessHandle, &pebBaseAddress32)))
             return status;
 
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress32, FIELD_OFFSET(PEB32, ProcessParameters)),
             &processParameters32,
@@ -782,7 +1634,7 @@ NTSTATUS PhGetProcessPebString(
             )))
             return status;
 
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(processParameters32, offset),
             &unicodeString32,
@@ -800,7 +1652,7 @@ NTSTATUS PhGetProcessPebString(
         string = PhCreateStringEx(NULL, unicodeString32.Length);
 
         // Read the string contents.
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             UlongToPtr(unicodeString32.Buffer),
             string->Buffer,
@@ -826,6 +1678,7 @@ NTSTATUS PhGetProcessPebString(
  * access.
  * \param CommandLine A variable which receives a pointer to a string containing the command line. You
  * must free the string using PhDereferenceObject() when you no longer need it.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetProcessCommandLine(
     _In_ HANDLE ProcessHandle,
@@ -839,7 +1692,7 @@ NTSTATUS PhGetProcessCommandLine(
         ULONG bufferLength;
         ULONG returnLength = 0;
 
-        bufferLength = sizeof(UNICODE_STRING) + DOS_MAX_PATH_LENGTH;
+        bufferLength = sizeof(UNICODE_STRING) + DOS_MAX_PATH_LENGTH * sizeof(WCHAR);
         buffer = PhAllocateStack(bufferLength);
         if (!buffer) return STATUS_NO_MEMORY;
 
@@ -880,6 +1733,11 @@ NTSTATUS PhGetProcessCommandLine(
     return PhGetProcessPebString(ProcessHandle, PhpoCommandLine, CommandLine);
 }
 
+/**
+ * Retrieves the command line string reference for the current process.
+ *
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessCommandLineStringRef(
     _Out_ PPH_STRINGREF CommandLine
     )
@@ -888,18 +1746,33 @@ NTSTATUS PhGetProcessCommandLineStringRef(
     return STATUS_SUCCESS;
 }
 
+/**
+ * Retrieves the current directory of a specified process.
+ *
+ * \param ProcessHandle A handle to the process. The handle must have PROCESS_QUERY_LIMITED_INFORMATION and PROCESS_VM_READ access.
+ * \param IsWow64 Specifies whether to retrieve the current directory from the WOW64 PEB (TRUE) or the native PEB (FALSE).
+ * \param CurrentDirectory A variable which receives a pointer to a string containing the current directory.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessCurrentDirectory(
     _In_ HANDLE ProcessHandle,
     _In_ BOOLEAN IsWow64,
-    _Out_ PPH_STRING *CurrentDirectory
+    _Out_ PPH_STRING* CurrentDirectory
     )
 {
     return PhGetProcessPebString(ProcessHandle, PhpoCurrentDirectory | (IsWow64 ? PhpoWow64 : PhpoNone), CurrentDirectory);
 }
 
+/**
+ * Retrieves the desktop information string for a specified process.
+ *
+ * \param ProcessHandle A handle to the process. The handle must have PROCESS_QUERY_LIMITED_INFORMATION and PROCESS_VM_READ access.
+ * \param DesktopInfo A variable which receives a pointer to a string containing the desktop information.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessDesktopInfo(
     _In_ HANDLE ProcessHandle,
-    _Out_ PPH_STRING *DesktopInfo
+    _Out_ PPH_STRING* DesktopInfo
     )
 {
     return PhGetProcessPebString(ProcessHandle, PhpoDesktopInfo, DesktopInfo);
@@ -914,6 +1787,7 @@ NTSTATUS PhGetProcessDesktopInfo(
  * \param WindowFlags A variable which receives the window flags.
  * \param WindowTitle A variable which receives a pointer to the window title. You must free the
  * string using PhDereferenceObject() when you no longer need it.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetProcessWindowTitle(
     _In_ HANDLE ProcessHandle,
@@ -979,7 +1853,7 @@ NTSTATUS PhGetProcessWindowTitle(
             return status;
 
         // Read the address of the process parameters.
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress, FIELD_OFFSET(PEB, ProcessParameters)),
             &processParameters,
@@ -989,7 +1863,7 @@ NTSTATUS PhGetProcessWindowTitle(
             return status;
 
         // Read the window flags.
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(processParameters, FIELD_OFFSET(RTL_USER_PROCESS_PARAMETERS, WindowFlags)),
             &windowFlags,
@@ -1007,7 +1881,7 @@ NTSTATUS PhGetProcessWindowTitle(
         if (!NT_SUCCESS(status = PhGetProcessPeb32(ProcessHandle, &pebBaseAddress32)))
             return status;
 
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress32, FIELD_OFFSET(PEB32, ProcessParameters)),
             &processParameters32,
@@ -1016,7 +1890,7 @@ NTSTATUS PhGetProcessWindowTitle(
             )))
             return status;
 
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(processParameters32, FIELD_OFFSET(RTL_USER_PROCESS_PARAMETERS32, WindowFlags)),
             &windowFlags,
@@ -1039,6 +1913,13 @@ NTSTATUS PhGetProcessWindowTitle(
     return status;
 }
 
+/**
+ * Retrieves the Data Execution Prevention (DEP) status for a specified process.
+ *
+ * \param ProcessHandle Handle to the process whose DEP status is to be queried.
+ * \param DepStatus Pointer to a variable that receives the DEP status flags.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessDepStatus(
     _In_ HANDLE ProcessHandle,
     _Out_ PULONG DepStatus
@@ -1055,7 +1936,11 @@ NTSTATUS PhGetProcessDepStatus(
         return status;
 
     // Check if execution of data pages is enabled.
-    if (executeFlags & MEM_EXECUTE_OPTION_ENABLE)
+    // TODO: if we want real, effective DEP status here as computed by nt!MiCanGrantExecute (x64 oskernels):
+    // canGrantExecEvenForNxPages = (EPROCESS.WoW64Process && EPROCESS.Machine == IMAGE_FILE_MACHINE_I386)
+    //     && (KF_GLOBAL_32BIT_EXECUTE || MEM_EXECUTE_OPTION_ENABLE
+    //         || (!KF_GLOBAL_32BIT_NOEXECUTE && !MEM_EXECUTE_OPTION_DISABLE));
+    if (executeFlags & MEM_EXECUTE_OPTION_DISABLE)
         depStatus = PH_PROCESS_DEP_ENABLED;
     else
         depStatus = 0;
@@ -1079,8 +1964,8 @@ NTSTATUS PhGetProcessDepStatus(
  * \li \c PH_GET_PROCESS_ENVIRONMENT_WOW64 Retrieve the environment block from the WOW64 PEB.
  * \param Environment A variable which will receive a pointer to the environment block copied from
  * the process. You must free the block using PhFreePage() when you no longer need it.
- * \param EnvironmentLength A variable which will receive the length of the environment block, in
- * bytes.
+ * \param EnvironmentLength A variable which will receive the length of the environment block, in bytes.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetProcessEnvironment(
     _In_ HANDLE ProcessHandle,
@@ -1106,7 +1991,7 @@ NTSTATUS PhGetProcessEnvironment(
         if (!NT_SUCCESS(status))
             return status;
 
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress32, UFIELD_OFFSET(PEB32, ProcessParameters)),
             &processParameters32,
@@ -1115,7 +2000,7 @@ NTSTATUS PhGetProcessEnvironment(
             )))
             return status;
 
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(processParameters32, UFIELD_OFFSET(RTL_USER_PROCESS_PARAMETERS32, Environment)),
             &environmentRemote32,
@@ -1136,7 +2021,7 @@ NTSTATUS PhGetProcessEnvironment(
         if (!NT_SUCCESS(status))
             return status;
 
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress, UFIELD_OFFSET(PEB, ProcessParameters)),
             &processParameters,
@@ -1145,7 +2030,7 @@ NTSTATUS PhGetProcessEnvironment(
             )))
             return status;
 
-        if (!NT_SUCCESS(status = NtReadVirtualMemory(
+        if (!NT_SUCCESS(status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(processParameters, UFIELD_OFFSET(RTL_USER_PROCESS_PARAMETERS, Environment)),
             &environmentRemote,
@@ -1175,7 +2060,7 @@ NTSTATUS PhGetProcessEnvironment(
     if (!environment)
         return STATUS_NO_MEMORY;
 
-    if (!NT_SUCCESS(status = NtReadVirtualMemory(
+    if (!NT_SUCCESS(status = PhReadVirtualMemory(
         ProcessHandle,
         environmentRemote,
         environment,
@@ -1195,15 +2080,14 @@ NTSTATUS PhGetProcessEnvironment(
     return status;
 }
 
-
 /**
  * Gets the file name of a mapped section.
  *
- * \param ProcessHandle A handle to a process. The handle must have PROCESS_QUERY_INFORMATION
- * access.
+ * \param ProcessHandle A handle to a process. The handle must have PROCESS_QUERY_INFORMATION access.
  * \param BaseAddress The base address of the section view.
  * \param FileName A variable which receives a pointer to a string containing the file name of the
  * section. You must free the string using PhDereferenceObject() when you no longer need it.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetProcessMappedFileName(
     _In_ HANDLE ProcessHandle,
@@ -1259,6 +2143,14 @@ NTSTATUS PhGetProcessMappedFileName(
     return status;
 }
 
+/**
+ * Retrieves information about a mapped image in the virtual memory of a process.
+ *
+ * \param ProcessHandle Handle to the process whose memory is being queried.
+ * \param BaseAddress Base address of the mapped image in the process's virtual memory.
+ * \param ImageInformation Pointer to a MEMORY_IMAGE_INFORMATION structure that receives the image information.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessMappedImageInformation(
     _In_ HANDLE ProcessHandle,
     _In_ PVOID BaseAddress,
@@ -1285,6 +2177,19 @@ NTSTATUS PhGetProcessMappedImageInformation(
     return status;
 }
 
+/**
+ * Retrieves the base address and optional size of a mapped image in a process, given an address within the image.
+ *
+ * This function queries the process for image mapping information at the specified address.
+ * If the address is valid and corresponds to an executable image, the base address and size
+ * (if requested) are returned. Otherwise, an unsuccessful status is returned.
+ *
+ * \param ProcessHandle Handle to the target process.
+ * \param Address Address within the mapped image in the target process.
+ * \param ImageBaseAddress Receives the base address of the mapped image.
+ * \param SizeOfImage Optional pointer to receive the size of the mapped image.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessMappedImageBaseFromAddress(
     _In_ HANDLE ProcessHandle,
     _In_ PVOID Address,
@@ -1304,13 +2209,10 @@ NTSTATUS PhGetProcessMappedImageBaseFromAddress(
     if (!NT_SUCCESS(status))
         return status;
 
-    if (!imageInfo.ImageBase ||
-        imageInfo.ImageNotExecutable ||
-        imageInfo.ImagePartialMap ||
-        Address < imageInfo.ImageBase)
-    {
+    if (!imageInfo.ImageBase || imageInfo.ImageNotExecutable || imageInfo.ImagePartialMap)
         return STATUS_UNSUCCESSFUL;
-    }
+    if (Address < imageInfo.ImageBase || (imageInfo.SizeOfImage && ((ULONG_PTR)Address >= (ULONG_PTR)imageInfo.ImageBase + imageInfo.SizeOfImage)))
+        return STATUS_UNSUCCESSFUL;
 
     *ImageBaseAddress = imageInfo.ImageBase;
 
@@ -1325,10 +2227,10 @@ NTSTATUS PhGetProcessMappedImageBaseFromAddress(
 /**
  * Gets working set information for a process.
  *
- * \param ProcessHandle A handle to a process. The handle must have PROCESS_QUERY_INFORMATION
- * access.
+ * \param ProcessHandle A handle to a process. The handle must have PROCESS_QUERY_INFORMATION access.
  * \param WorkingSetInformation A variable which receives a pointer to the information. You must
  * free the buffer using PhFree() when you no longer need it.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetProcessWorkingSetInformation(
     _In_ HANDLE ProcessHandle,
@@ -1410,9 +2312,9 @@ NTSTATUS PhGetProcessWorkingSetInformation(
 /**
  * Gets working set counters for a process.
  *
- * \param ProcessHandle A handle to a process. The handle must have PROCESS_QUERY_INFORMATION
- * access.
+ * \param ProcessHandle A handle to a process. The handle must have PROCESS_QUERY_INFORMATION access.
  * \param WsCounters A variable which receives the counters.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetProcessWsCounters(
     _In_ HANDLE ProcessHandle,
@@ -1451,6 +2353,13 @@ NTSTATUS PhGetProcessWsCounters(
     return status;
 }
 
+/**
+ * Retrieves the mandatory integrity policy for a specified process.
+ *
+ * \param ProcessHandle A handle to the process whose mandatory policy is to be queried.
+ * \param Mask A pointer to an ACCESS_MASK variable that receives the mandatory policy mask.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessMandatoryPolicy(
     _In_ HANDLE ProcessHandle,
     _Out_ PACCESS_MASK Mask
@@ -1474,7 +2383,7 @@ NTSTATUS PhGetProcessMandatoryPolicy(
     if (!NT_SUCCESS(status))
         return status;
 
-    status = RtlGetSaclSecurityDescriptor(
+    status = PhGetSaclSecurityDescriptor(
         currentSecurityDescriptor,
         &currentSaclPresent,
         &currentSacl,
@@ -1489,7 +2398,7 @@ NTSTATUS PhGetProcessMandatoryPolicy(
 
     for (USHORT i = 0; i < currentSacl->AceCount; i++)
     {
-        status = RtlGetAce(currentSacl, i, &currentAce);
+        status = PhGetAce(currentSacl, i, &currentAce);
 
         if (!NT_SUCCESS(status))
             break;
@@ -1521,6 +2430,13 @@ CleanupExit:
     return status;
 }
 
+/**
+ * Sets the mandatory label policy for a specified process.
+ *
+ * \param ProcessHandle Handle to the target process.
+ * \param Mask Mandatory label policy mask to apply.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetProcessMandatoryPolicy(
     _In_ HANDLE ProcessHandle,
     _In_ ACCESS_MASK Mask
@@ -1542,7 +2458,7 @@ NTSTATUS PhSetProcessMandatoryPolicy(
     if (!NT_SUCCESS(status))
         return status;
 
-    status = RtlGetSaclSecurityDescriptor(
+    status = PhGetSaclSecurityDescriptor(
         currentSecurityDescriptor,
         &currentSaclPresent,
         &currentSacl,
@@ -1559,7 +2475,7 @@ NTSTATUS PhSetProcessMandatoryPolicy(
 
     for (USHORT i = 0; i < currentSacl->AceCount; i++)
     {
-        status = RtlGetAce(currentSacl, i, &currentAce);
+        status = PhGetAce(currentSacl, i, &currentAce);
 
         if (!NT_SUCCESS(status))
             break;
@@ -1583,6 +2499,13 @@ CleanupExit:
     return status;
 }
 
+/**
+ * Retrieves the quota limits for a specified process.
+ *
+ * \param ProcessHandle Handle to the process whose quota limits are to be queried.
+ * \param QuotaLimits Pointer to a QUOTA_LIMITS structure that receives the quota limits.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessQuotaLimits(
     _In_ HANDLE ProcessHandle,
     _Out_ PQUOTA_LIMITS QuotaLimits
@@ -1613,6 +2536,13 @@ NTSTATUS PhGetProcessQuotaLimits(
     return status;
 }
 
+/**
+ * Sets the quota limits for a specified process.
+ *
+ * \param ProcessHandle A handle to the process whose quota limits are to be set.
+ * \param QuotaLimits The quota limits to apply to the process.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetProcessQuotaLimits(
     _In_ HANDLE ProcessHandle,
     _In_ QUOTA_LIMITS QuotaLimits
@@ -1640,6 +2570,12 @@ NTSTATUS PhSetProcessQuotaLimits(
     return status;
 }
 
+/**
+ * Attempts to empty the working set of the specified process.
+ *
+ * \param ProcessHandle A handle to the process whose working set should be emptied.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetProcessEmptyWorkingSet(
     _In_ HANDLE ProcessHandle
     )
@@ -1671,6 +2607,12 @@ NTSTATUS PhSetProcessEmptyWorkingSet(
     return status;
 }
 
+/**
+ * Empties the working set of the specified process.
+ *
+ * \param ProcessHandle A handle to the process whose working set should be emptied.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetProcessWorkingSetEmpty(
     _In_ HANDLE ProcessHandle
     )
@@ -1693,6 +2635,14 @@ NTSTATUS PhSetProcessWorkingSetEmpty(
     return status;
 }
 
+/**
+ * Sets the specified region of a process's working set to empty pages.
+ *
+ * \param ProcessHandle Handle to the target process.
+ * \param BaseAddress Pointer to the base address of the region to modify.
+ * \param Size Size, in bytes, of the region to modify.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetProcessEmptyPageWorkingSet(
     _In_ HANDLE ProcessHandle,
     _In_ PVOID BaseAddress,
@@ -1725,6 +2675,13 @@ NTSTATUS PhSetProcessEmptyPageWorkingSet(
     return status;
 }
 
+/**
+ * Retrieves the priority class of a specified process.
+ *
+ * \param ProcessHandle Handle to the process whose priority class is to be retrieved.
+ * \param PriorityClass Pointer to a variable that receives the priority class value.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessPriorityClass(
     _In_ HANDLE ProcessHandle,
     _Out_ PUCHAR PriorityClass
@@ -1751,6 +2708,13 @@ NTSTATUS PhGetProcessPriorityClass(
     return status;
 }
 
+/**
+ * Sets the priority class of a process.
+ *
+ * \param ProcessHandle A handle to the process whose priority class is to be set.
+ * \param PriorityClass The priority class value to assign to the process.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetProcessPriorityClass(
     _In_ HANDLE ProcessHandle,
     _In_ UCHAR PriorityClass
@@ -1845,6 +2809,13 @@ NTSTATUS PhSetProcessIoPriority(
     return status;
 }
 
+/**
+ * Sets the page priority for the specified process.
+ *
+ * \param ProcessHandle Handle to the process whose page priority is to be set.
+ * \param PagePriority The desired page priority value.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetProcessPagePriority(
     _In_ HANDLE ProcessHandle,
     _In_ ULONG PagePriority
@@ -1876,6 +2847,13 @@ NTSTATUS PhSetProcessPagePriority(
     return status;
 }
 
+/**
+ * Sets the priority boost for a specified process.
+ *
+ * \param ProcessHandle Handle to the process whose priority boost setting is to be changed.
+ * \param DisablePriorityBoost If TRUE, disables priority boost for the process; if FALSE, enables it.
+ * \return NTSTATUS code indicating success or failure of the operation.
+ */
 NTSTATUS PhSetProcessPriorityBoost(
     _In_ HANDLE ProcessHandle,
     _In_ BOOLEAN DisablePriorityBoost
@@ -1906,6 +2884,13 @@ NTSTATUS PhSetProcessPriorityBoost(
     return status;
 }
 
+/**
+ * Retrieves the activity moderation state for a process based on the specified moderation identifier.
+ *
+ * \param processId The identifier of the process to query.
+ * \param moderationId The moderation identifier to check.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessActivityModerationState(
     _In_ PCPH_STRINGREF ModerationIdentifier,
     _Out_ PSYSTEM_ACTIVITY_MODERATION_APP_SETTINGS ModerationSettings
@@ -1913,7 +2898,7 @@ NTSTATUS PhGetProcessActivityModerationState(
 {
     NTSTATUS status;
     SYSTEM_ACTIVITY_MODERATION_USER_SETTINGS activityModeration;
-    PKEY_VALUE_PARTIAL_INFORMATION keyValueInfo;
+    PKEY_VALUE_PARTIAL_INFORMATION keyValueInfo = NULL;
 
     RtlZeroMemory(&activityModeration, sizeof(SYSTEM_ACTIVITY_MODERATION_USER_SETTINGS));
 
@@ -1925,7 +2910,7 @@ NTSTATUS PhGetProcessActivityModerationState(
         );
 
     if (!NT_SUCCESS(status))
-        goto CleanupExit;
+        return status;
 
     status = PhQueryValueKey(
         activityModeration.UserKeyHandle,
@@ -1948,10 +2933,10 @@ NTSTATUS PhGetProcessActivityModerationState(
     if (!NT_SUCCESS(status))
         goto CleanupExit;
 
-    RtlMoveMemory(
+    RtlCopyMemory(
         ModerationSettings,
         keyValueInfo->Data,
-        sizeof(activityModeration)
+        sizeof(SYSTEM_ACTIVITY_MODERATION_APP_SETTINGS)
         );
 
 CleanupExit:
@@ -1959,10 +2944,22 @@ CleanupExit:
     {
         NtClose(activityModeration.UserKeyHandle);
     }
+    if (keyValueInfo)
+    {
+        PhFree(keyValueInfo);
+    }
 
     return status;
 }
 
+/**
+ * Sets the activity moderation state for a process.
+ *
+ * \param ModerationIdentifier A pointer to a PH_STRINGREF structure that identifies the moderation context.
+ * \param ModerationType The type of activity moderation to apply (SYSTEM_ACTIVITY_MODERATION_APP_TYPE).
+ * \param ModerationState The desired moderation state (SYSTEM_ACTIVITY_MODERATION_STATE).
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetProcessActivityModerationState(
     _In_ PCPH_STRINGREF ModerationIdentifier,
     _In_ SYSTEM_ACTIVITY_MODERATION_APP_TYPE ModerationType,
@@ -1972,10 +2969,12 @@ NTSTATUS PhSetProcessActivityModerationState(
     NTSTATUS status;
     SYSTEM_ACTIVITY_MODERATION_INFO moderationInfo;
 
-    memset(&moderationInfo, 0, sizeof(SYSTEM_ACTIVITY_MODERATION_INFO));
+    RtlZeroMemory(&moderationInfo, sizeof(SYSTEM_ACTIVITY_MODERATION_INFO));
     moderationInfo.AppType = ModerationType;
     moderationInfo.ModerationState = ModerationState;
-    PhStringRefToUnicodeString(ModerationIdentifier, &moderationInfo.Identifier);
+
+    if (!PhStringRefToUnicodeString(ModerationIdentifier, &moderationInfo.Identifier))
+        return STATUS_NAME_TOO_LONG;
 
     status = NtSetSystemInformation(
         SystemActivityModerationExeState,
@@ -2012,6 +3011,8 @@ NTSTATUS PhSetProcessActivityModerationState(
                 &moderationSettings,
                 sizeof(SYSTEM_ACTIVITY_MODERATION_APP_SETTINGS)
                 );
+
+            NtClose(activityModeration.UserKeyHandle);
         }
     }
 
@@ -2051,6 +3052,13 @@ NTSTATUS PhSetProcessAffinityMask(
     return status;
 }
 
+/**
+ * Sets the processor group affinity for a specified process.
+ *
+ * \param ProcessHandle Handle to the process whose group affinity is to be set.
+ * \param GroupAffinity The GROUP_AFFINITY structure specifying the desired processor group and affinity mask.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhSetProcessGroupAffinity(
     _In_ HANDLE ProcessHandle,
     _In_ GROUP_AFFINITY GroupAffinity
@@ -2149,6 +3157,13 @@ NTSTATUS PhSetProcessPowerThrottlingState(
 }
 
 // rev from KernelBase!QueryProcessMachine (jxy-s)
+/**
+ * Retrieves the architecture of the specified process.
+ *
+ * \param ProcessHandle A handle to the process whose architecture is to be determined.
+ * \param ProcessArchitecture A pointer to a variable that receives the process architecture.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessArchitecture(
     _In_ HANDLE ProcessHandle,
     _Out_ PUSHORT ProcessArchitecture
@@ -2185,6 +3200,13 @@ NTSTATUS PhGetProcessArchitecture(
     return status;
 }
 
+/**
+ * Retrieves the base address of the image for a specified process.
+ *
+ * \param ProcessHandle A handle to the process whose image base address is to be retrieved.
+ * \param ImageBaseAddress A pointer that receives the image base address of the process.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessImageBaseAddress(
     _In_ HANDLE ProcessHandle,
     _Out_ PVOID* ImageBaseAddress
@@ -2207,7 +3229,7 @@ NTSTATUS PhGetProcessImageBaseAddress(
         if (!NT_SUCCESS(status))
             return status;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebAddress, UFIELD_OFFSET(PEB32, ImageBaseAddress)),
             &imageBaseAddress32,
@@ -2230,7 +3252,7 @@ NTSTATUS PhGetProcessImageBaseAddress(
         if (!NT_SUCCESS(status))
             return status;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebAddress, UFIELD_OFFSET(PEB, ImageBaseAddress)),
             &imageBaseAddress,
@@ -2252,6 +3274,13 @@ NTSTATUS PhGetProcessImageBaseAddress(
     return status;
 }
 
+/**
+ * Retrieves the security domain identifier for a specified process.
+ *
+ * \param ProcessHandle A handle to the process whose security domain is to be retrieved.
+ * \param SecurityDomain A pointer to a variable that receives the security domain identifier.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessSecurityDomain(
     _In_ HANDLE ProcessHandle,
     _Out_ PULONGLONG SecurityDomain
@@ -2278,6 +3307,13 @@ NTSTATUS PhGetProcessSecurityDomain(
     return status;
 }
 
+/**
+ * Retrieves the Server Silo identifier for a specified process.
+ *
+ * \param ProcessHandle A handle to the process for which the Server Silo information is to be retrieved.
+ * \param ServerSilo A pointer to a variable that receives the Server Silo identifier.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessServerSilo(
     _In_ HANDLE ProcessHandle,
     _Out_ PULONG ServerSilo
@@ -2304,6 +3340,13 @@ NTSTATUS PhGetProcessServerSilo(
     return status;
 }
 
+/**
+ * Retrieves the sequence number of a process.
+ *
+ * \param ProcessHandle A handle to the process whose sequence number is to be retrieved.
+ * \param SequenceNumber A pointer to a variable that receives the process sequence number.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessSequenceNumber(
     _In_ HANDLE ProcessHandle,
     _Out_ PULONGLONG SequenceNumber
@@ -2374,6 +3417,13 @@ NTSTATUS PhGetProcessSequenceNumber(
     return status;
 }
 
+/**
+ * Retrieves the unique start key for a specified process.
+ *
+ * \param ProcessHandle Handle to the process whose start key is to be retrieved.
+ * \param ProcessStartKey Pointer to a variable that receives the process start key.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessStartKey(
     _In_ HANDLE ProcessHandle,
     _Out_ PULONGLONG ProcessStartKey
@@ -2412,6 +3462,13 @@ NTSTATUS PhGetProcessStartKey(
     return status;
 }
 
+/**
+ * Retrieves the telemetry application session GUID for a specified process.
+ *
+ * \param ProcessHandle Handle to the process whose telemetry session GUID is to be retrieved.
+ * \param TelemetrySessionGuid Pointer to a GUID structure that receives the telemetry session GUID.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessTelemetryAppSessionGuid(
     _In_ HANDLE ProcessHandle,
     _Out_ PGUID TelemetrySessionGuid
@@ -2431,17 +3488,34 @@ NTSTATUS PhGetProcessTelemetryAppSessionGuid(
         &returnLength
         );
 
-    if (NT_SUCCESS(status) || status == STATUS_BUFFER_OVERFLOW && returnLength)
+    if (NT_SUCCESS(status) || (status == STATUS_BUFFER_OVERFLOW &&
+        RTL_CONTAINS_FIELD(&telemetryInfo, returnLength, BootId) &&
+        RTL_CONTAINS_FIELD(&telemetryInfo, telemetryInfo.HeaderSize, BootId)))
     {
-        TelemetrySessionGuid->Data1 = telemetryInfo.ProcessId;
-        TelemetrySessionGuid->Data2 = (USHORT)telemetryInfo.SessionId;
-        TelemetrySessionGuid->Data3 = (USHORT)telemetryInfo.BootId;
-        memcpy(TelemetrySessionGuid->Data4, &telemetryInfo.CreateTime, sizeof(telemetryInfo.CreateTime));
+        GUID telemetryAppGuid;
+
+        memset(&telemetryAppGuid, 0, sizeof(GUID));
+        telemetryAppGuid.Data1 = telemetryInfo.ProcessId;
+        telemetryAppGuid.Data2 = (USHORT)telemetryInfo.SessionId;
+        telemetryAppGuid.Data3 = (USHORT)telemetryInfo.BootId;
+
+        if (memcpy_s(telemetryAppGuid.Data4, sizeof(telemetryAppGuid.Data4), &telemetryInfo.CreateTime, sizeof(telemetryInfo.CreateTime)))
+            return STATUS_FAIL_CHECK;
+        if (memcpy_s(TelemetrySessionGuid, sizeof(*TelemetrySessionGuid), &telemetryAppGuid, sizeof(telemetryAppGuid)))
+            return STATUS_FAIL_CHECK;
     }
 
     return status;
 }
 
+/**
+ * Retrieves telemetry ID information for a specified process.
+ *
+ * \param ProcessHandle Handle to the process for which telemetry information is to be retrieved.
+ * \param TelemetryInformation Pointer to a variable that receives a pointer to the telemetry ID information structure.
+ * \param TelemetryInformationLength Optional pointer to a variable that receives the length, in bytes, of the telemetry information structure.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessTelemetryIdInformation(
     _In_ HANDLE ProcessHandle,
     _Out_ PPROCESS_TELEMETRY_ID_INFORMATION* TelemetryInformation,
@@ -2494,6 +3568,14 @@ NTSTATUS PhGetProcessTelemetryIdInformation(
     return status;
 }
 
+/**
+ * Retrieves the count of TLS (Thread Local Storage) bitmap entries and TLS expansion bitmap entries for a specified process.
+ *
+ * \param ProcessHandle A handle to the process whose TLS bitmap counters are to be retrieved.
+ * \param TlsBitMapCount Pointer to a variable that receives the count of TLS bitmap entries.
+ * \param TlsExpansionBitMapCount Pointer to a variable that receives the count of TLS expansion bitmap entries.
+ * \return NTSTATUS Successful or errant status.
+ */
 NTSTATUS PhGetProcessTlsBitMapCounters(
     _In_ HANDLE ProcessHandle,
     _Out_ PULONG TlsBitMapCount,
@@ -2523,7 +3605,7 @@ NTSTATUS PhGetProcessTlsBitMapCounters(
         if (!NT_SUCCESS(status))
             goto CleanupExit;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress, UFIELD_OFFSET(PEB32, TlsBitmapBits)),
             bitmapBits,
@@ -2534,7 +3616,7 @@ NTSTATUS PhGetProcessTlsBitMapCounters(
         if (!NT_SUCCESS(status))
             goto CleanupExit;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress, UFIELD_OFFSET(PEB32, TlsExpansionBitmapBits)),
             bitmapExpansionBits,
@@ -2553,7 +3635,7 @@ NTSTATUS PhGetProcessTlsBitMapCounters(
         if (!NT_SUCCESS(status))
             goto CleanupExit;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress, UFIELD_OFFSET(PEB, TlsBitmapBits)),
             bitmapBits,
@@ -2564,7 +3646,7 @@ NTSTATUS PhGetProcessTlsBitMapCounters(
         if (!NT_SUCCESS(status))
             goto CleanupExit;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress, UFIELD_OFFSET(PEB, TlsExpansionBitmapBits)),
             bitmapExpansionBits,
@@ -2589,12 +3671,10 @@ CleanupExit:
 /**
  * Gets whether the process is running under the POSIX subsystem.
  *
- * \param ProcessHandle A handle to a process. The handle
- * must have PROCESS_QUERY_LIMITED_INFORMATION and
- * PROCESS_VM_READ access.
+ * \param ProcessHandle A handle to a process.
  * \param IsPosix A variable which receives a boolean
- * indicating whether the process is running under the
- * POSIX subsystem.
+ * indicating whether the process is running under the POSIX subsystem.
+ * \return NTSTATUS Successful or errant status.
  */
 NTSTATUS PhGetProcessIsPosix(
     _In_ HANDLE ProcessHandle,
@@ -2624,7 +3704,7 @@ NTSTATUS PhGetProcessIsPosix(
         if (!NT_SUCCESS(status))
             return status;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress, UFIELD_OFFSET(PEB32, ImageSubsystem)),
             &imageSubsystem,
@@ -2640,7 +3720,7 @@ NTSTATUS PhGetProcessIsPosix(
         if (!NT_SUCCESS(status))
             return status;
 
-        status = NtReadVirtualMemory(
+        status = PhReadVirtualMemory(
             ProcessHandle,
             PTR_ADD_OFFSET(pebBaseAddress, UFIELD_OFFSET(PEB, ImageSubsystem)),
             &imageSubsystem,

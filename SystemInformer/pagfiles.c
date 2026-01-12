@@ -38,7 +38,7 @@ VOID PhShowPagefilesDialog(
     if (!PhPageFileWindowHandle)
     {
         PhPageFileWindowHandle = PhCreateDialog(
-            PhInstanceHandle,
+            NtCurrentImageBase(),
             MAKEINTRESOURCE(IDD_PAGEFILES),
             PhCsForceNoParent ? NULL : ParentWindowHandle,
             PhpPagefilesDlgProc,
@@ -203,7 +203,7 @@ INT_PTR CALLBACK PhpPagefilesDlgProc(
             PhAddLayoutItem(&context->LayoutManager, context->ListViewHandle, NULL, PH_ANCHOR_ALL);
             PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDC_REFRESH), NULL, PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM);
             PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDOK), NULL, PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM);
-            PhLoadListViewColumnsFromSetting(L"PageFileListViewColumns", context->ListViewHandle);
+            PhLoadListViewColumnsFromSetting(SETTING_PAGE_FILE_LIST_VIEW_COLUMNS, context->ListViewHandle);
 
             ExtendedListView_SetRedraw(context->ListViewHandle, FALSE);
             ListView_DeleteAllItems(context->ListViewHandle);
@@ -233,8 +233,8 @@ INT_PTR CALLBACK PhpPagefilesDlgProc(
                 DestroyWindow(hwndDlg);
             }
 
-            if (PhGetIntegerPairSetting(L"PageFileWindowPosition").X)
-                PhLoadWindowPlacementFromSetting(L"PageFileWindowPosition", L"PageFileWindowSize", hwndDlg);
+            if (PhValidWindowPlacementFromSetting(SETTING_PAGE_FILE_WINDOW_POSITION))
+                PhLoadWindowPlacementFromSetting(SETTING_PAGE_FILE_WINDOW_POSITION, SETTING_PAGE_FILE_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, GetParent(hwndDlg));
 
@@ -245,8 +245,8 @@ INT_PTR CALLBACK PhpPagefilesDlgProc(
         break;
     case WM_DESTROY:
         {
-            PhSaveListViewColumnsToSetting(L"PageFileListViewColumns", context->ListViewHandle);
-            PhSaveWindowPlacementToSetting(L"PageFileWindowPosition", L"PageFileWindowSize", hwndDlg);
+            PhSaveListViewColumnsToSetting(SETTING_PAGE_FILE_LIST_VIEW_COLUMNS, context->ListViewHandle);
+            PhSaveWindowPlacementToSetting(SETTING_PAGE_FILE_WINDOW_POSITION, SETTING_PAGE_FILE_WINDOW_SIZE, hwndDlg);
 
             PhUnregisterDialog(PhPageFileWindowHandle);
             PhPageFileWindowHandle = NULL;
@@ -299,6 +299,12 @@ INT_PTR CALLBACK PhpPagefilesDlgProc(
                 }
                 break;
             }
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&context->LayoutManager);
         }
         break;
     case WM_SIZE:

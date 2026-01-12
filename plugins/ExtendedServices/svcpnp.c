@@ -280,7 +280,8 @@ VOID EspShowDeviceInstanceMenu(
     PPH_EMENU subMenu;
     PPH_EMENU_ITEM selectedItem;
 
-    GetCursorPos(&cursorPos);
+    if (!PhGetClientPos(ParentWindow, &cursorPos))
+        return;
 
     menu = PhCreateEMenu();
     PhInsertEMenuItem(menu, PhCreateEMenuItem(0, 0, L"Enable", NULL, NULL), ULONG_MAX);
@@ -778,7 +779,7 @@ INT_PTR CALLBACK EspPnPServiceDlgProc(
                 ShowWindow(context->ListViewHandle, SW_HIDE);
             }
 
-            PhInitializeWindowTheme(WindowHandle, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(WindowHandle, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     case WM_DESTROY:

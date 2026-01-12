@@ -25,7 +25,9 @@ VOID EspLayoutServiceListControl(
 {
     RECT rect;
 
-    GetWindowRect(GetDlgItem(WindowHandle, IDC_SERVICES_LAYOUT), &rect);
+    if (!PhGetWindowRect(GetDlgItem(WindowHandle, IDC_SERVICES_LAYOUT), &rect))
+        return;
+
     MapWindowRect(NULL, WindowHandle, &rect);
 
     MoveWindow(
@@ -135,7 +137,7 @@ INT_PTR CALLBACK EspServiceDependenciesDlgProc(
                 PhClearReference(&errorMessage);
             }
 
-            PhInitializeWindowTheme(WindowHandle, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(WindowHandle, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     case WM_DESTROY:
@@ -149,6 +151,15 @@ INT_PTR CALLBACK EspServiceDependenciesDlgProc(
         break;
     case WM_SIZE:
         {
+            PhLayoutManagerLayout(&context->LayoutManager);
+
+            if (context->ServiceListHandle)
+                EspLayoutServiceListControl(WindowHandle, context->ServiceListHandle);
+        }
+        break;
+    case WM_DPICHANGED_AFTERPARENT:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
             PhLayoutManagerLayout(&context->LayoutManager);
 
             if (context->ServiceListHandle)
@@ -260,7 +271,7 @@ INT_PTR CALLBACK EspServiceDependentsDlgProc(
                 PhClearReference(&errorMessage);
             }
 
-            PhInitializeWindowTheme(WindowHandle, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(WindowHandle, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     case WM_DESTROY:
@@ -274,6 +285,15 @@ INT_PTR CALLBACK EspServiceDependentsDlgProc(
         break;
     case WM_SIZE:
         {
+            PhLayoutManagerLayout(&context->LayoutManager);
+
+            if (context->ServiceListHandle)
+                EspLayoutServiceListControl(WindowHandle, context->ServiceListHandle);
+        }
+        break;
+    case WM_DPICHANGED_AFTERPARENT:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
             PhLayoutManagerLayout(&context->LayoutManager);
 
             if (context->ServiceListHandle)

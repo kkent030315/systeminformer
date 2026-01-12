@@ -28,7 +28,7 @@ typedef struct _PV_STRINGS_SETTINGS
             ULONG ExtendedCharSet : 1;
             ULONG SkipTextSection : 1;
             ULONG SkipHighEntropySections : 1;
-            ULONG Spare : 28;
+            ULONG Spare : 27;
         };
 
         ULONG Flags;
@@ -224,7 +224,7 @@ NTSTATUS PvpSearchStringsThread(
         }
 
         if (Context->Settings.SkipHighEntropySections &&
-            PhCalculateEntropy(sectionData, section->SizeOfRawData, &entropy, NULL) &&
+            PhCalculateEntropy(sectionData, section->SizeOfRawData, &entropy, NULL, NULL) &&
             entropy > 7.5) // Likely encrypted or compressed data.
         {
             goto SkipSection;
@@ -396,6 +396,7 @@ BOOLEAN PvpStringsTreeFilterCallback(
     return PvSearchControlMatch(context->SearchMatchHandle, &node->String->sr);
 }
 
+_Function_class_(PH_SEARCHCONTROL_CALLBACK)
 VOID NTAPI PvpStringsSearchControlCallback(
     _In_ ULONG_PTR MatchHandle,
     _In_opt_ PVOID Context
@@ -903,6 +904,11 @@ INT_PTR CALLBACK PvStringsDlgProc(
 
                 context->PropSheetContext->LayoutInitialized = TRUE;
             }
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
         }
         break;
     case WM_SIZE:

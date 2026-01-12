@@ -63,6 +63,7 @@ VOID EtEtwSystemInformationInitializing(
     NetworkSection = Pointers->CreateSection(&section);
 }
 
+_Function_class_(PH_SYSINFO_SECTION_CALLBACK)
 BOOLEAN EtpDiskSysInfoSectionCallback(
     _In_ PPH_SYSINFO_SECTION Section,
     _In_ PH_SYSINFO_SECTION_MESSAGE Message,
@@ -126,7 +127,7 @@ BOOLEAN EtpDiskSysInfoSectionCallback(
             PPH_GRAPH_DRAW_INFO drawInfo = Parameter1;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y | PH_GRAPH_USE_LINE_2;
-            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoReadOther"), PhGetIntegerSetting(L"ColorIoWrite"), Section->Parameters->WindowDpi);
+            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_READ_OTHER), PhGetIntegerSetting(SETTING_COLOR_IO_WRITE), Section->Parameters->WindowDpi);
             PhGetDrawInfoGraphBuffers(&Section->GraphState.Buffers, drawInfo, EtDiskReadHistory.Count);
 
             if (!Section->GraphState.Valid)
@@ -288,7 +289,7 @@ INT_PTR CALLBACK EtpDiskDialogProc(
 
             margin = panelItem->Margin;
             PhGetSizeDpiValue(&margin, DiskSection->Parameters->WindowDpi, TRUE);
-            PhAddLayoutItemEx(&DiskLayoutManager, DiskPanel, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, margin);
+            PhAddLayoutItemEx(&DiskLayoutManager, DiskPanel, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, &margin);
 
             EtpCreateDiskGraph();
             EtpUpdateDiskGraph();
@@ -313,6 +314,7 @@ INT_PTR CALLBACK EtpDiskDialogProc(
             DiskWriteGraphState.Valid = FALSE;
             DiskWriteGraphState.TooltipIndex = ULONG_MAX;
 
+            PhLayoutManagerUpdate(&DiskLayoutManager, DiskSection->Parameters->WindowDpi);
             PhLayoutManagerLayout(&DiskLayoutManager);
             EtpLayoutDiskGraphs(hwndDlg);
         }
@@ -434,8 +436,8 @@ VOID EtpLayoutDiskGraphs(
     PhGetSizeDpiValue(&marginRect, DiskSection->Parameters->WindowDpi, TRUE);
     graphPadding = PhGetDpi(GRAPH_PADDING, DiskSection->Parameters->WindowDpi);
 
-    GetClientRect(WindowHandle, &clientRect);
-    GetClientRect(GetDlgItem(WindowHandle, IDC_DISKREAD_L), &labelRect);
+    PhGetClientRect(WindowHandle, &clientRect);
+    PhGetClientRect(GetDlgItem(WindowHandle, IDC_DISKREAD_L), &labelRect);
     graphWidth = clientRect.right - marginRect.left - marginRect.right;
     graphHeight = (clientRect.bottom - marginRect.top - marginRect.bottom - labelRect.bottom * 2 - graphPadding * 3) / 2;
 
@@ -504,7 +506,7 @@ VOID EtpNotifyDiskReadGraph(
             PPH_GRAPH_DRAW_INFO drawInfo = getDrawInfo->DrawInfo;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y;
-            DiskSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoReadOther"), 0, DiskSection->Parameters->WindowDpi);
+            DiskSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_READ_OTHER), 0, DiskSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &DiskReadGraphState,
@@ -624,7 +626,7 @@ VOID EtpNotifyDiskWriteGraph(
             PPH_GRAPH_DRAW_INFO drawInfo = getDrawInfo->DrawInfo;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y;
-            DiskSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoWrite"), 0, DiskSection->Parameters->WindowDpi);
+            DiskSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_WRITE), 0, DiskSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &DiskWriteGraphState,
@@ -844,6 +846,7 @@ PPH_STRING EtpGetMaxDiskString(
     return PhReferenceEmptyString();
 }
 
+_Function_class_(PH_SYSINFO_SECTION_CALLBACK)
 BOOLEAN EtpNetworkSysInfoSectionCallback(
     _In_ PPH_SYSINFO_SECTION Section,
     _In_ PH_SYSINFO_SECTION_MESSAGE Message,
@@ -884,7 +887,7 @@ BOOLEAN EtpNetworkSysInfoSectionCallback(
             PPH_GRAPH_DRAW_INFO drawInfo = Parameter1;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y | PH_GRAPH_USE_LINE_2;
-            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoReadOther"), PhGetIntegerSetting(L"ColorIoWrite"), Section->Parameters->WindowDpi);
+            Section->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_READ_OTHER), PhGetIntegerSetting(SETTING_COLOR_IO_WRITE), Section->Parameters->WindowDpi);
             PhGetDrawInfoGraphBuffers(&Section->GraphState.Buffers, drawInfo, EtNetworkReceiveHistory.Count);
 
             if (!Section->GraphState.Valid)
@@ -1046,7 +1049,7 @@ INT_PTR CALLBACK EtpNetworkDialogProc(
 
             margin = panelItem->Margin;
             PhGetSizeDpiValue(&margin, NetworkSection->Parameters->WindowDpi, TRUE);
-            PhAddLayoutItemEx(&NetworkLayoutManager, NetworkPanel, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, margin);
+            PhAddLayoutItemEx(&NetworkLayoutManager, NetworkPanel, NULL, PH_ANCHOR_LEFT | PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM, &margin);
 
             EtpCreateNetworkGraph();
             EtpUpdateNetworkGraph();
@@ -1071,6 +1074,7 @@ INT_PTR CALLBACK EtpNetworkDialogProc(
             NetworkSendGraphState.Valid = FALSE;
             NetworkSendGraphState.TooltipIndex = ULONG_MAX;
 
+            PhLayoutManagerUpdate(&DiskLayoutManager, DiskSection->Parameters->WindowDpi);
             PhLayoutManagerLayout(&NetworkLayoutManager);
             EtpLayoutNetworkGraphs(hwndDlg);
         }
@@ -1192,8 +1196,8 @@ VOID EtpLayoutNetworkGraphs(
     PhGetSizeDpiValue(&marginRect, NetworkSection->Parameters->WindowDpi, TRUE);
     graphPadding = PhGetDpi(GRAPH_PADDING, NetworkSection->Parameters->WindowDpi);
 
-    GetClientRect(WindowHandle, &clientRect);
-    GetClientRect(GetDlgItem(WindowHandle, IDC_NETRECEIVE_L), &labelRect);
+    PhGetClientRect(WindowHandle, &clientRect);
+    PhGetClientRect(GetDlgItem(WindowHandle, IDC_NETRECEIVE_L), &labelRect);
     graphWidth = clientRect.right - marginRect.left - marginRect.right;
     graphHeight = (clientRect.bottom - marginRect.top - marginRect.bottom - labelRect.bottom * 2 - graphPadding * 3) / 2;
 
@@ -1262,7 +1266,7 @@ VOID EtpNotifyNetworkReceiveGraph(
             PPH_GRAPH_DRAW_INFO drawInfo = getDrawInfo->DrawInfo;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y;
-            NetworkSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoReadOther"), 0, NetworkSection->Parameters->WindowDpi);
+            NetworkSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_READ_OTHER), 0, NetworkSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &NetworkReceiveGraphState,
@@ -1385,7 +1389,7 @@ VOID EtpNotifyNetworkSendGraph(
             PPH_GRAPH_DRAW_INFO drawInfo = getDrawInfo->DrawInfo;
 
             drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | PH_GRAPH_LABEL_MAX_Y;
-            NetworkSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(L"ColorIoWrite"), 0, NetworkSection->Parameters->WindowDpi);
+            NetworkSection->Parameters->ColorSetupFunction(drawInfo, PhGetIntegerSetting(SETTING_COLOR_IO_WRITE), 0, NetworkSection->Parameters->WindowDpi);
 
             PhGraphStateGetDrawInfo(
                 &NetworkSendGraphState,

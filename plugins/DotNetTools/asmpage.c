@@ -99,7 +99,7 @@ typedef struct _ASMPAGE_CONTEXT
     PPH_PROCESS_ITEM ProcessItem;
     PDNA_NODE ClrV2Node;
 
-    volatile LONG CancelQueryContext;
+    LONG CancelQueryContext;
 
     union
     {
@@ -354,7 +354,7 @@ PDNA_NODE FindClrNode(
 {
     for (ULONG i = 0; i < Context->NodeRootList->Count; i++)
     {
-        PDNA_NODE node = Context->NodeRootList->Items[i];
+        PDNA_NODE node = PhItemList(Context->NodeRootList, i);
 
         if (!node->IsFakeClr && node->u.Clr.ClrInstanceID == ClrInstanceID)
             return node;
@@ -370,7 +370,7 @@ PDNA_NODE FindAppDomainNode(
 {
     for (ULONG i = 0; i < ClrNode->Children->Count; i++)
     {
-        PDNA_NODE node = ClrNode->Children->Items[i];
+        PDNA_NODE node = PhItemList(ClrNode->Children, i);
 
         if (node->u.AppDomain.AppDomainID == AppDomainID)
             return node;
@@ -386,7 +386,7 @@ PDNA_NODE FindAssemblyNode(
 {
     for (ULONG i = 0; i < AppDomainNode->Children->Count; i++)
     {
-        PDNA_NODE node = AppDomainNode->Children->Items[i];
+        PDNA_NODE node = PhItemList(AppDomainNode->Children, i);
 
         if (node->u.Assembly.AssemblyID == AssemblyID)
             return node;
@@ -402,11 +402,11 @@ PDNA_NODE FindAssemblyNode2(
 {
     for (ULONG i = 0; i < ClrNode->Children->Count; i++)
     {
-        PDNA_NODE appDomainNode = ClrNode->Children->Items[i];
+        PDNA_NODE appDomainNode = PhItemList(ClrNode->Children, i);
 
         for (ULONG j = 0; j < appDomainNode->Children->Count; j++)
         {
-            PDNA_NODE assemblyNode = appDomainNode->Children->Items[j];
+            PDNA_NODE assemblyNode = PhItemList(appDomainNode->Children, j);
 
             if (assemblyNode->u.Assembly.AssemblyID == AssemblyID)
                 return assemblyNode;
@@ -423,11 +423,11 @@ PDNA_NODE FindAssemblyNode3(
 {
     for (ULONG i = 0; i < Context->NodeRootList->Count; i++)
     {
-        PDNA_NODE appDomainNode = Context->NodeRootList->Items[i];
+        PDNA_NODE appDomainNode = PhItemList(Context->NodeRootList, i);
 
         for (ULONG j = 0; j < appDomainNode->Children->Count; j++)
         {
-            PDNA_NODE assemblyNode = appDomainNode->Children->Items[j];
+            PDNA_NODE assemblyNode = PhItemList(appDomainNode->Children, j);
 
             if (assemblyNode->u.Assembly.AssemblyID == AssemblyID)
                 return assemblyNode;
@@ -469,7 +469,7 @@ VOID DotNetAsmExpandAllTreeNodes(
 
     for (i = 0; i < Context->NodeList->Count; i++)
     {
-        PPH_MODULE_NODE node = Context->NodeList->Items[i];
+        PPH_MODULE_NODE node = PhItemList(Context->NodeList, i);
 
         if (node->Node.Expanded != Expand)
         {
@@ -489,7 +489,7 @@ VOID DotNetAsmDestroyTreeNodes(
     if (Context->NodeList)
     {
         for (ULONG i = 0; i < Context->NodeList->Count; i++)
-            DotNetAsmDestroyNode(Context->NodeList->Items[i]);
+            DotNetAsmDestroyNode(PhItemList(Context->NodeList, i));
 
         PhDereferenceObject(Context->NodeList);
         Context->NodeList = NULL;
@@ -527,7 +527,7 @@ PDNA_NODE DotNetAsmGetSelectedTreeNode(
     {
         for (ULONG i = 0; i < Context->NodeList->Count; i++)
         {
-            PDNA_NODE node = Context->NodeList->Items[i];
+            PDNA_NODE node = PhItemList(Context->NodeList, i);
 
             if (node->Node.Selected)
             {
@@ -599,7 +599,7 @@ VOID DotNetAsmShowContextMenu(
                     {
                         PhShellExecuteUserString(
                             Context->WindowHandle,
-                            L"ProgramInspectExecutables",
+                            SETTING_PROGRAM_INSPECT_EXECUTABLES,
                             PhGetString(node->PathText),
                             FALSE,
                             L"Make sure the PE Viewer executable file is present."
@@ -613,7 +613,7 @@ VOID DotNetAsmShowContextMenu(
                     {
                         PhShellExecuteUserString(
                             Context->WindowHandle,
-                            L"ProgramInspectExecutables",
+                            SETTING_PROGRAM_INSPECT_EXECUTABLES,
                             PhGetString(node->NativePathText),
                             FALSE,
                             L"Make sure the PE Viewer executable file is present."
@@ -627,7 +627,7 @@ VOID DotNetAsmShowContextMenu(
                     {
                         PhShellExecuteUserString(
                             Context->WindowHandle,
-                            L"FileBrowseExecutable",
+                            SETTING_FILE_BROWSE_EXECUTABLE,
                             PhGetString(node->PathText),
                             FALSE,
                             L"Make sure the Explorer executable file is present."
@@ -641,7 +641,7 @@ VOID DotNetAsmShowContextMenu(
                     {
                         PhShellExecuteUserString(
                             Context->WindowHandle,
-                            L"FileBrowseExecutable",
+                            SETTING_FILE_BROWSE_EXECUTABLE,
                             PhGetString(node->NativePathText),
                             FALSE,
                             L"Make sure the Explorer executable file is present."
@@ -853,21 +853,21 @@ BOOLEAN NTAPI DotNetAsmTreeNewCallback(
             {
             case DNA_TYPE_CLR:
             case DNA_TYPE_APPDOMAIN:
-                //getNodeColor->BackColor = PhGetIntegerSetting(L"ColorDotNet");
+                //getNodeColor->BackColor = PhGetIntegerSetting(SETTING_COLOR_DOT_NET);
                 break;
             case DNA_TYPE_ASSEMBLY:
                 {
                     if (context->HighlightDynamicModules && (node->u.Assembly.AssemblyFlags & 0x2) == 0x2)
                     {
-                        getNodeColor->BackColor = PhGetIntegerSetting(L"ColorPacked");
+                        getNodeColor->BackColor = PhGetIntegerSetting(SETTING_COLOR_PACKED);
                     }
                     else if (context->HighlightNativeModules && (node->u.Assembly.AssemblyFlags & 0x4) == 0x4)
                     {
-                        getNodeColor->BackColor = PhGetIntegerSetting(L"ColorSystemProcesses");
+                        getNodeColor->BackColor = PhGetIntegerSetting(SETTING_COLOR_SYSTEM_PROCESSES);
                     }
                     else
                     {
-                        //getNodeColor->BackColor = PhGetIntegerSetting(L"ColorDotNet");
+                        //getNodeColor->BackColor = PhGetIntegerSetting(SETTING_COLOR_DOT_NET);
                     }
                 }
                 break;
@@ -933,7 +933,7 @@ BOOLEAN NTAPI DotNetAsmTreeNewCallback(
             {
                 PhShellExecuteUserString(
                     context->WindowHandle,
-                    L"ProgramInspectExecutables",
+                    SETTING_PROGRAM_INSPECT_EXECUTABLES,
                     PhGetString(node->PathText),
                     FALSE,
                     L"Make sure the PE Viewer executable file is present."
@@ -1136,28 +1136,66 @@ PPH_STRING DnCreateStringSafe(
     _In_ UNALIGNED PCWSTR UnalignedString
     )
 {
-    if (IS_ALIGNED(UnalignedString, MAX_NATURAL_ALIGNMENT))
+    if (IS_ALIGNED(UnalignedString, MEMORY_ALLOCATION_ALIGNMENT))
     {
         // Address is aligned, access directly
-
         return PhCreateString(UnalignedString);
     }
-    else // if (((ULONG_PTR)UnalignedString % sizeof(PWSTR)) != 0)
+    else
     {
+        WCHAR ch;
         SIZE_T alignedLength = 0;
-        WCHAR alignedBuffer[0x800];
+        const unsigned char *src = (const unsigned char *)UnalignedString;
+        const SIZE_T maxChars = 0x1000 - 1;
 
-        // Address is not aligned, use memcpy to access the string.
+        SIZE_T allocSize = 0x1000 * sizeof(WCHAR);
+        WCHAR *alignedBuffer = _aligned_malloc(allocSize, MEMORY_ALLOCATION_ALIGNMENT);
 
-        while (UnalignedString[alignedLength] != UNICODE_NULL && alignedLength < RTL_NUMBER_OF(alignedBuffer) - sizeof(UNICODE_NULL))
+        if (alignedBuffer)
         {
-            alignedLength++;
+            // Read one WCHAR at a time from the unaligned source using memcpy to avoid unaligned wide deref.
+            while (alignedLength < maxChars)
+            {
+                memcpy(&ch, src + alignedLength * sizeof(WCHAR), sizeof(WCHAR));
+                if (ch == UNICODE_NULL)
+                    break;
+                alignedLength++;
+            }
+
+            // Copy the measured characters into alignedBuffer (memcpy handles unaligned source).
+            if (alignedLength)
+            {
+                memcpy(alignedBuffer, UnalignedString, alignedLength * sizeof(WCHAR));
+            }
+            alignedBuffer[alignedLength] = UNICODE_NULL;
+
+            PPH_STRING result = PhCreateString(alignedBuffer);
+            _aligned_free(alignedBuffer);
+            return result;
         }
+        else
+        {
+            // Fallback to a small stack buffer if allocation fails.
+            WCHAR smallBuffer[256];
+            const SIZE_T smallMax = RTL_NUMBER_OF(smallBuffer) - 1;
+            alignedLength = 0;
 
-        memcpy(alignedBuffer, UnalignedString, alignedLength * sizeof(WCHAR));
-        alignedBuffer[alignedLength] = UNICODE_NULL;
+            while (alignedLength < smallMax)
+            {
+                memcpy(&ch, src + alignedLength * sizeof(WCHAR), sizeof(WCHAR));
+                if (ch == UNICODE_NULL)
+                    break;
+                alignedLength++;
+            }
 
-        return PhCreateString(alignedBuffer);
+            if (alignedLength)
+            {
+                memcpy(smallBuffer, UnalignedString, alignedLength * sizeof(WCHAR));
+            }
+            smallBuffer[alignedLength] = UNICODE_NULL;
+
+            return PhCreateString(smallBuffer);
+        }
     }
 }
 
@@ -1612,6 +1650,7 @@ ULONG UpdateDotNetTraceInfoWithTimeout(
     return Context->TraceResult;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS DotNetTraceQueryThreadStart(
     _In_ PVOID Parameter
     )
@@ -1663,7 +1702,7 @@ NTSTATUS DotNetTraceQueryThreadStart(
     {
         for (i = 0; i < context->NodeList->Count; i++)
         {
-            PDNA_NODE node = context->NodeList->Items[i];
+            PDNA_NODE node = PhItemList(context->NodeList, i);
 
             if (node->Type != DNA_TYPE_CLR)
             {
@@ -1686,6 +1725,7 @@ NTSTATUS DotNetTraceQueryThreadStart(
     return STATUS_SUCCESS;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS DotNetSosTraceQueryThreadStart(
     _In_ PASMPAGE_QUERY_CONTEXT Context
     )
@@ -1719,7 +1759,7 @@ NTSTATUS DotNetSosTraceQueryThreadStart(
     for (ULONG i = 0; i < appdomainlist->Count; i++)
     {
         static CONST PH_STRINGREF string = PH_STRINGREF_INIT(L"AppDomain: ");
-        PDN_PROCESS_APPDOMAIN_ENTRY entry = appdomainlist->Items[i];
+        PDN_PROCESS_APPDOMAIN_ENTRY entry = PhItemList(appdomainlist, i);
         PDNA_NODE parentNode;
 
         //if (!entry->AssemblyList)
@@ -1742,7 +1782,7 @@ NTSTATUS DotNetSosTraceQueryThreadStart(
         {
             for (ULONG j = 0; j < entry->AssemblyList->Count; j++)
             {
-                PDN_DOTNET_ASSEMBLY_ENTRY assembly = entry->AssemblyList->Items[j];
+                PDN_DOTNET_ASSEMBLY_ENTRY assembly = PhItemList(entry->AssemblyList, j);
                 PDNA_NODE childNode;
 
                 //if (FindAssemblyNode3(Context, assembly->AssemblyID))
@@ -1793,7 +1833,7 @@ NTSTATUS DotNetSosTraceQueryThreadStart(
     {
         for (ULONG i = 0; i < Context->NodeList->Count; i++)
         {
-            PDNA_NODE node = Context->NodeList->Items[i];
+            PDNA_NODE node = PhItemList(Context->NodeList, i);
 
             if (node->Type != DNA_TYPE_CLR)
             {
@@ -1819,6 +1859,7 @@ CleanupExit:
     return STATUS_SUCCESS;
 }
 
+_Function_class_(PH_TYPE_DELETE_PROCEDURE)
 VOID DotNetQueryContextDeleteProcedure(
     _In_ PASMPAGE_QUERY_CONTEXT Context,
     _In_ ULONG Flags
@@ -2052,7 +2093,7 @@ INT_PTR CALLBACK DotNetAsmPageDlgProc(
             PhReferenceObject(context);
             DotNetAsmRefreshTraceQuery(context, FALSE);
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     case WM_DESTROY:
@@ -2120,7 +2161,8 @@ INT_PTR CALLBACK DotNetAsmPageDlgProc(
                     PPH_EMENU_ITEM highlightNativeItem;
                     PPH_EMENU_ITEM selectedItem;
 
-                    GetWindowRect(GetDlgItem(hwndDlg, IDC_OPTIONS), &rect);
+                    if (!PhGetWindowRect(GetDlgItem(hwndDlg, IDC_OPTIONS), &rect))
+                        break;
 
                     menu = PhCreateEMenu();
                     PhInsertEMenuItem(menu, dynamicItem = PhCreateEMenuItem(0, DN_ASM_MENU_HIDE_DYNAMIC_OPTION, L"Hide dynamic", NULL, NULL), ULONG_MAX);

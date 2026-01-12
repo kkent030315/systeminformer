@@ -224,6 +224,19 @@ PhGetMappedImageLoadConfig64(
     _Out_ PIMAGE_LOAD_CONFIG_DIRECTORY64 *LoadConfig
     );
 
+// Remote mapped image
+
+typedef _Function_class_(PH_READ_VIRTUAL_MEMORY_CALLBACK)
+NTSTATUS NTAPI PH_READ_VIRTUAL_MEMORY_CALLBACK(
+    _In_ HANDLE ProcessHandle,
+    _In_ PVOID BaseAddress,
+    _Out_writes_bytes_(BufferSize) PVOID Buffer,
+    _In_ SIZE_T BufferSize,
+    _Out_opt_ PSIZE_T NumberOfBytesRead,
+    _In_opt_ PVOID Context
+    );
+typedef PH_READ_VIRTUAL_MEMORY_CALLBACK* PPH_READ_VIRTUAL_MEMORY_CALLBACK;
+
 typedef struct _PH_REMOTE_MAPPED_IMAGE
 {
     HANDLE ProcessHandle;
@@ -239,6 +252,9 @@ typedef struct _PH_REMOTE_MAPPED_IMAGE
     USHORT NumberOfSections;
     PIMAGE_SECTION_HEADER Sections;
     PVOID PageCache;
+
+    PPH_READ_VIRTUAL_MEMORY_CALLBACK ReadVirtualMemoryCallback;
+    PVOID Context;
 } PH_REMOTE_MAPPED_IMAGE, *PPH_REMOTE_MAPPED_IMAGE;
 
 FORCEINLINE
@@ -256,30 +272,20 @@ RemoteMappedImageProbe(
 PHLIBAPI
 NTSTATUS
 NTAPI
-PhLoadRemoteMappedImage(
-    _In_ HANDLE ProcessHandle,
-    _In_ PVOID ViewBase,
-    _In_ SIZE_T ViewSize,
-    _Out_ PPH_REMOTE_MAPPED_IMAGE RemoteMappedImage
-    );
-
-typedef NTSTATUS (NTAPI *PPH_READ_VIRTUAL_MEMORY_CALLBACK)(
-    _In_ HANDLE ProcessHandle,
-    _In_opt_ PVOID BaseAddress,
-    _Out_writes_bytes_(BufferSize) PVOID Buffer,
-    _In_ SIZE_T BufferSize,
-    _Out_opt_ PSIZE_T NumberOfBytesRead
+PhInitializeRemoteMappedImage(
+    _Out_ PPH_REMOTE_MAPPED_IMAGE RemoteMappedImage,
+    _In_opt_ PPH_READ_VIRTUAL_MEMORY_CALLBACK ReadVirtualMemoryCallback,
+    _In_opt_ PVOID Context
     );
 
 PHLIBAPI
 NTSTATUS
 NTAPI
-PhLoadRemoteMappedImageEx(
+PhLoadRemoteMappedImage(
+    _In_ PPH_REMOTE_MAPPED_IMAGE RemoteMappedImage,
     _In_ HANDLE ProcessHandle,
     _In_ PVOID ViewBase,
-    _In_ SIZE_T Size,
-    _In_opt_ PPH_READ_VIRTUAL_MEMORY_CALLBACK ReadVirtualMemoryCallback,
-    _Out_ PPH_REMOTE_MAPPED_IMAGE RemoteMappedImage
+    _In_ SIZE_T ViewSize
     );
 
 PHLIBAPI
@@ -295,7 +301,7 @@ NTAPI
 PhGetRemoteMappedImageDataEntry(
     _In_ PPH_REMOTE_MAPPED_IMAGE RemoteMappedImage,
     _In_ ULONG Index,
-    _Out_ PIMAGE_DATA_DIRECTORY * Entry
+    _Out_ PIMAGE_DATA_DIRECTORY* Entry
     );
 
 PHLIBAPI
@@ -303,7 +309,6 @@ NTSTATUS
 NTAPI
 PhGetRemoteMappedImageDirectoryEntry(
     _In_ PPH_REMOTE_MAPPED_IMAGE RemoteMappedImage,
-    _In_opt_ PPH_READ_VIRTUAL_MEMORY_CALLBACK ReadVirtualMemoryCallback,
     _In_ ULONG Index,
     _Out_ PVOID* DataBuffer,
     _Out_opt_ ULONG* DataLength
@@ -322,28 +327,8 @@ PhGetRemoteMappedImageDebugEntryByType(
 PHLIBAPI
 NTSTATUS
 NTAPI
-PhGetRemoteMappedImageDebugEntryByTypeEx(
-    _In_ PPH_REMOTE_MAPPED_IMAGE RemoteMappedImage,
-    _In_ ULONG Type,
-    _In_opt_ PPH_READ_VIRTUAL_MEMORY_CALLBACK ReadVirtualMemoryCallback,
-    _Out_opt_ PULONG DataLength,
-    _Out_ PPVOID DataBuffer
-    );
-
-PHLIBAPI
-NTSTATUS
-NTAPI
 PhGetRemoteMappedImageGuardFlags(
     _In_ PPH_REMOTE_MAPPED_IMAGE RemoteMappedImage,
-    _Out_ PULONG GuardFlags
-    );
-
-PHLIBAPI
-NTSTATUS
-NTAPI
-PhGetRemoteMappedImageGuardFlagsEx(
-    _In_ PPH_REMOTE_MAPPED_IMAGE RemoteMappedImage,
-    _In_opt_ PPH_READ_VIRTUAL_MEMORY_CALLBACK ReadVirtualMemoryCallback,
     _Out_ PULONG GuardFlags
     );
 
@@ -631,6 +616,18 @@ PhGetMappedImageResource(
     _In_ PCWSTR Type,
     _In_opt_ USHORT Language,
     _Out_opt_ PULONG ResourceLength,
+    _Out_opt_ PVOID* ResourceBuffer
+    );
+
+PHLIBAPI
+NTSTATUS
+NTAPI
+PhGetMappedImageResourceIndex(
+    _In_ PPH_MAPPED_IMAGE MappedImage,
+    _In_ PIMAGE_RESOURCE_DIRECTORY ResourceDirectory,
+    _In_ LONG ResourceIndex,
+    _In_ PCWSTR ResourceType,
+    _Out_opt_ ULONG* ResourceLength,
     _Out_opt_ PVOID* ResourceBuffer
     );
 
@@ -1202,8 +1199,9 @@ BOOLEAN
 NTAPI
 PhGetMappedImageEntropy(
     _In_ PPH_MAPPED_IMAGE MappedImage,
-    _Out_ FLOAT* ImageEntropy,
-    _Out_ FLOAT* ImageVariance
+    _Out_ PFLOAT ImageEntropy,
+    _Out_ PFLOAT ImageMean,
+    _Out_ PFLOAT ImageVariance
     );
 
 PHLIBAPI
@@ -1218,15 +1216,6 @@ NTSTATUS
 NTAPI
 PhGetRemoteMappedImageCHPEVersion(
     _In_ PPH_REMOTE_MAPPED_IMAGE RemoteMappedImage,
-    _Out_ PULONG CHPEVersion
-    );
-
-PHLIBAPI
-NTSTATUS
-NTAPI
-PhGetRemoteMappedImageCHPEVersionEx(
-    _In_ PPH_REMOTE_MAPPED_IMAGE RemoteMappedImage,
-    _In_ PPH_READ_VIRTUAL_MEMORY_CALLBACK ReadVirtualMemoryCallback,
     _Out_ PULONG CHPEVersion
     );
 

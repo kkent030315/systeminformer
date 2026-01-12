@@ -177,9 +177,13 @@ NTSTATUS PhInitializeWindowsInformation(
     // Windows 10, Windows Server 2016
     else if (majorVersion == 10 && minorVersion == 0)
     {
-        if (buildVersion > 26200)
+        if (buildVersion > 28000)
         {
             WindowsVersion = WINDOWS_NEW;
+        }
+        else if (buildVersion >= 28000)
+        {
+            WindowsVersion = WINDOWS_11_26H1;
         }
         else if (buildVersion >= 26200)
         {
@@ -404,16 +408,20 @@ NTSTATUS PhInitializeProcessorInformation(
     }
 }
 
+#define WORKAROUND_CRTBUG_EXITPROCESS
+#ifdef WORKAROUND_CRTBUG_EXITPROCESS
+PH_CLANG_DIAGNOSTIC_PUSH();
+PH_CLANG_DIAGNOSTIC_IGNORED("-Winvalid-noreturn");
+#endif
 _Use_decl_annotations_
 VOID PhExitApplication(
-    _In_opt_ NTSTATUS Status
+    _In_ NTSTATUS Status
     )
 {
     PhTraceInfo("%ls exiting: %!STATUS!", PhApplicationName, Status);
 
     WPP_CLEANUP();
 
-#define WORKAROUND_CRTBUG_EXITPROCESS
 #ifdef WORKAROUND_CRTBUG_EXITPROCESS
     //HANDLE standardHandle;
     //
@@ -435,3 +443,6 @@ VOID PhExitApplication(
     RtlExitUserProcess(Status);
 #endif
 }
+#ifdef WORKAROUND_CRTBUG_EXITPROCESS
+PH_CLANG_DIAGNOSTIC_POP();
+#endif

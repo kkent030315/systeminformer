@@ -23,6 +23,7 @@
 
 #include <emenu.h>
 #include <settings.h>
+#include <phsettings.h>
 
 static HWND PhMipContainerWindow = NULL;
 static POINT PhMipSourcePoint;
@@ -126,12 +127,12 @@ VOID PhPinMiniInformation(
                 );
             ShowWindow(PhMipWindow, SW_SHOW);
 
-            if (PhGetIntegerSetting(L"MiniInfoWindowPinned"))
+            if (PhGetIntegerSetting(SETTING_MINI_INFO_WINDOW_PINNED))
                 PhMipSetPinned(TRUE, TRUE);
 
-            PhMipRefreshAutomatically = PhGetIntegerSetting(L"MiniInfoWindowRefreshAutomatically");
+            PhMipRefreshAutomatically = PhGetIntegerSetting(SETTING_MINI_INFO_WINDOW_REFRESH_AUTOMATICALLY);
 
-            opacity = PhGetIntegerSetting(L"MiniInfoWindowOpacity");
+            opacity = PhGetIntegerSetting(SETTING_MINI_INFO_WINDOW_OPACITY);
 
             if (opacity != 0)
                 PhSetWindowOpacity(PhMipContainerWindow, opacity);
@@ -158,7 +159,7 @@ VOID PhPinMiniInformation(
         }
         else
         {
-            PhLoadWindowPlacementFromSetting(L"MiniInfoWindowPosition", L"MiniInfoWindowSize", PhMipContainerWindow);
+            PhLoadWindowPlacementFromSetting(SETTING_MINI_INFO_WINDOW_POSITION, SETTING_MINI_INFO_WINDOW_SIZE, PhMipContainerWindow);
             SetWindowPos(PhMipContainerWindow, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
         }
 
@@ -320,11 +321,14 @@ RTL_ATOM PhMipContainerInitializeWindowClass(
 
     memset(&wcex, 0, sizeof(WNDCLASSEX));
     wcex.cbSize = sizeof(WNDCLASSEX);
+    wcex.style = CS_DBLCLKS | CS_GLOBALCLASS;
     wcex.lpfnWndProc = PhMipContainerWndProc;
-    wcex.hInstance = PhInstanceHandle;
-    name = PhaGetStringSetting(L"MiniInfoContainerClassName");
-    wcex.lpszClassName = PhGetStringOrDefault(name, L"MiniInfoContainerClassName");
+    wcex.cbClsExtra = 0;
+    wcex.cbWndExtra = sizeof(PVOID);
+    wcex.hInstance = NtCurrentImageBase();
     wcex.hCursor = PhLoadCursor(NULL, IDC_ARROW);
+    name = PhaGetStringSetting(SETTING_MINI_INFO_CONTAINER_CLASS_NAME);
+    wcex.lpszClassName = PhGetStringOrDefault(name, SETTING_MINI_INFO_CONTAINER_CLASS_NAME);
 
     return RegisterClassEx(&wcex);
 }
@@ -357,7 +361,7 @@ VOID PhMipContainerOnShowWindow(
 
         Button_SetCheck(GetDlgItem(PhMipWindow, IDC_PINWINDOW), BST_UNCHECKED);
         PhMipSetPinned(FALSE, TRUE);
-        PhSetIntegerSetting(L"MiniInfoWindowPinned", FALSE);
+        PhSetIntegerSetting(SETTING_MINI_INFO_WINDOW_PINNED, FALSE);
 
         PhUnregisterCallback(
             PhGetGeneralCallback(GeneralCallbackProcessProviderUpdatedEvent),
@@ -370,7 +374,7 @@ VOID PhMipContainerOnShowWindow(
             PhMipMessageLoopFilterEntry = NULL;
         }
 
-        PhSaveWindowPlacementToSetting(L"MiniInfoWindowPosition", L"MiniInfoWindowSize", PhMipContainerWindow);
+        PhSaveWindowPlacementToSetting(SETTING_MINI_INFO_WINDOW_POSITION, SETTING_MINI_INFO_WINDOW_SIZE, PhMipContainerWindow);
     }
 
     if (SectionList)
@@ -378,7 +382,7 @@ VOID PhMipContainerOnShowWindow(
         for (i = 0; i < SectionList->Count; i++)
         {
             section = SectionList->Items[i];
-            section->Callback(section, MiniInfoShowing, (PVOID)Showing, NULL);
+            section->Callback(section, MiniInfoShowing, UlongToPtr(Showing), NULL);
         }
     }
 }
@@ -421,7 +425,7 @@ VOID PhMipContainerOnExitSizeMove(
     VOID
     )
 {
-    PhSaveWindowPlacementToSetting(L"MiniInfoWindowPosition", L"MiniInfoWindowSize", PhMipContainerWindow);
+    PhSaveWindowPlacementToSetting(SETTING_MINI_INFO_WINDOW_POSITION, SETTING_MINI_INFO_WINDOW_SIZE, PhMipContainerWindow);
 }
 
 BOOLEAN PhMipContainerOnEraseBkgnd(
@@ -469,7 +473,7 @@ VOID PhMipOnInitDialog(
     PhAddLayoutItem(&PhMipLayoutManager, GetDlgItem(PhMipWindow, IDC_OPTIONS), NULL, PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM);
     PhAddLayoutItem(&PhMipLayoutManager, GetDlgItem(PhMipWindow, IDC_PINWINDOW), NULL, PH_ANCHOR_RIGHT | PH_ANCHOR_BOTTOM);
 
-    Button_SetCheck(GetDlgItem(PhMipWindow, IDC_PINWINDOW), !!PhGetIntegerSetting(L"MiniInfoWindowPinned"));
+    Button_SetCheck(GetDlgItem(PhMipWindow, IDC_PINWINDOW), !!PhGetIntegerSetting(SETTING_MINI_INFO_WINDOW_PINNED));
 
     // Subclass the window procedure.
     oldWndProc = PhGetWindowProcedure(sectionWindow);
@@ -536,7 +540,7 @@ VOID PhMipOnCommand(
             pinned = Button_GetCheck(GetDlgItem(PhMipWindow, IDC_PINWINDOW)) == BST_CHECKED;
             PhPinMiniInformation(MiniInfoManualPinType, pinned ? 1 : -1, 0, 0, NULL, NULL);
             PhMipSetPinned(pinned, TRUE);
-            PhSetIntegerSetting(L"MiniInfoWindowPinned", pinned);
+            PhSetIntegerSetting(SETTING_MINI_INFO_WINDOW_PINNED, pinned);
         }
         break;
     }
@@ -694,8 +698,8 @@ VOID PhMipCalculateWindowRectangle(
     PH_RECTANGLE point;
     MONITORINFO monitorInfo = { sizeof(monitorInfo) };
 
-    PhLoadWindowPlacementFromSetting(NULL, L"MiniInfoWindowSize", PhMipContainerWindow);
-    GetWindowRect(PhMipContainerWindow, &windowRect);
+    PhLoadWindowPlacementFromSetting(NULL, SETTING_MINI_INFO_WINDOW_SIZE, PhMipContainerWindow);
+    PhGetWindowRect(PhMipContainerWindow, &windowRect);
     SendMessage(PhMipContainerWindow, WM_SIZING, WMSZ_BOTTOMRIGHT, (LPARAM)&windowRect); // Adjust for the minimum size.
     PhRectToRectangle(&windowRectangle, &windowRect);
 
@@ -721,7 +725,7 @@ VOID PhMipCalculateWindowRectangle(
 
             if ((trayWindow = FindWindow(L"Shell_TrayWnd", NULL)) &&
                 GetMonitorInfo(MonitorFromWindow(trayWindow, MONITOR_DEFAULTTOPRIMARY), &monitorInfo) && // Just in case
-                GetWindowRect(trayWindow, &taskbarRect))
+                PhGetWindowRect(trayWindow, &taskbarRect))
             {
                 LONG monitorMidX = (monitorInfo.rcMonitor.left + monitorInfo.rcMonitor.right) / 2;
                 LONG monitorMidY = (monitorInfo.rcMonitor.top + monitorInfo.rcMonitor.bottom) / 2;
@@ -959,7 +963,8 @@ VOID PhMipLayout(
     RECT clientRect;
     RECT windowRect;
 
-    GetClientRect(PhMipContainerWindow, &clientRect);
+    if (!PhGetClientRect(PhMipContainerWindow, &clientRect))
+        return;
 
     MoveWindow(
         PhMipWindow,
@@ -970,7 +975,9 @@ VOID PhMipLayout(
 
     PhLayoutManagerLayout(&PhMipLayoutManager);
 
-    GetWindowRect(PhMipLayoutWindow, &windowRect);
+    if (!PhGetWindowRect(PhMipLayoutWindow, &windowRect))
+        return;
+
     MapWindowRect(NULL, PhMipWindow, &windowRect);
 
     if (CurrentSection && CurrentSection->DialogHandle)
@@ -1038,7 +1045,7 @@ VOID PhMipToggleRefreshAutomatically(
     )
 {
     PhMipRefreshAutomatically ^= MIP_REFRESH_AUTOMATICALLY_FLAG(PhMipPinned);
-    PhSetIntegerSetting(L"MiniInfoWindowRefreshAutomatically", PhMipRefreshAutomatically);
+    PhSetIntegerSetting(SETTING_MINI_INFO_WINDOW_REFRESH_AUTOMATICALLY, PhMipRefreshAutomatically);
 }
 
 VOID PhMipSetPinned(
@@ -1140,7 +1147,7 @@ VOID PhMipShowOptionsMenu(
 
     // Opacity
 
-    id = PH_OPACITY_TO_ID(PhGetIntegerSetting(L"MiniInfoWindowOpacity"));
+    id = PH_OPACITY_TO_ID(PhGetIntegerSetting(SETTING_MINI_INFO_WINDOW_OPACITY));
 
     if (menuItem = PhFindEMenuItem(menu, PH_EMENU_FIND_DESCEND, NULL, id))
         menuItem->Flags |= PH_EMENU_CHECKED | PH_EMENU_RADIOCHECK;
@@ -1152,7 +1159,7 @@ VOID PhMipShowOptionsMenu(
 
     // Show the menu.
 
-    GetWindowRect(GetDlgItem(PhMipWindow, IDC_OPTIONS), &rect);
+    PhGetWindowRect(GetDlgItem(PhMipWindow, IDC_OPTIONS), &rect);
     menuItem = PhShowEMenu(menu, PhMipWindow, PH_EMENU_SHOW_LEFTRIGHT,
         PH_ALIGN_LEFT | PH_ALIGN_BOTTOM, rect.left, rect.top);
 
@@ -1174,7 +1181,7 @@ VOID PhMipShowOptionsMenu(
                 ULONG opacity;
 
                 opacity = PH_ID_TO_OPACITY(menuItem->Id);
-                PhSetIntegerSetting(L"MiniInfoWindowOpacity", opacity);
+                PhSetIntegerSetting(SETTING_MINI_INFO_WINDOW_OPACITY, opacity);
                 PhSetWindowOpacity(PhMipContainerWindow, opacity);
             }
             break;
@@ -1379,6 +1386,12 @@ INT_PTR CALLBACK PhMipListSectionDialogProc(
 
             listSection->TreeNewHandle = NULL;
             listSection->DialogHandle = NULL;
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&listSection->LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&listSection->LayoutManager);
         }
         break;
     case WM_SIZE:
@@ -1793,7 +1806,7 @@ BOOLEAN PhMipListSectionTreeNewCallback(
                         pinned = TRUE;
                         PhPinMiniInformation(MiniInfoManualPinType, pinned ? 1 : -1, 0, 0, NULL, NULL);
                         PhMipSetPinned(pinned, FALSE);
-                        PhSetIntegerSetting(L"MiniInfoWindowPinned", pinned);
+                        PhSetIntegerSetting(SETTING_MINI_INFO_WINDOW_PINNED, pinned);
                     }
 
                     if (node = PhMipGetSelectedGroupNode(listSection))
@@ -1813,7 +1826,7 @@ BOOLEAN PhMipListSectionTreeNewCallback(
                         pinned = FALSE;
                         PhPinMiniInformation(MiniInfoManualPinType, pinned ? 1 : -1, 0, 0, NULL, NULL);
                         PhMipSetPinned(pinned, FALSE);
-                        PhSetIntegerSetting(L"MiniInfoWindowPinned", pinned);
+                        PhSetIntegerSetting(SETTING_MINI_INFO_WINDOW_PINNED, pinned);
                     }
                 }
                 break;
@@ -1827,7 +1840,7 @@ BOOLEAN PhMipListSectionTreeNewCallback(
                         pinned = TRUE;
                         PhPinMiniInformation(MiniInfoManualPinType, pinned ? 1 : -1, 0, 0, NULL, NULL);
                         PhMipSetPinned(pinned, FALSE);
-                        PhSetIntegerSetting(L"MiniInfoWindowPinned", pinned);
+                        PhSetIntegerSetting(SETTING_MINI_INFO_WINDOW_PINNED, pinned);
                     }
 
                     if (node = PhMipGetSelectedGroupNode(listSection))
@@ -1842,7 +1855,7 @@ BOOLEAN PhMipListSectionTreeNewCallback(
                             {
                                 PhShellExecuteUserString(
                                     listSection->DialogHandle,
-                                    L"FileBrowseExecutable",
+                                    SETTING_FILE_BROWSE_EXECUTABLE,
                                     node->ProcessGroup->Representative->FileName->Buffer,
                                     FALSE,
                                     L"Make sure the Explorer executable file is present."
@@ -1859,7 +1872,7 @@ BOOLEAN PhMipListSectionTreeNewCallback(
                         pinned = FALSE;
                         PhPinMiniInformation(MiniInfoManualPinType, pinned ? 1 : -1, 0, 0, NULL, NULL);
                         PhMipSetPinned(pinned, FALSE);
-                        PhSetIntegerSetting(L"MiniInfoWindowPinned", pinned);
+                        PhSetIntegerSetting(SETTING_MINI_INFO_WINDOW_PINNED, pinned);
                     }
                 }
                 break;

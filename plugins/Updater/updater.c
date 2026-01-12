@@ -25,6 +25,7 @@ PH_EVENT InitializedEvent = PH_EVENT_INIT;
 PPH_OBJECT_TYPE UpdateContextType = NULL;
 PH_INITONCE UpdateContextTypeInitOnce = PH_INITONCE_INIT;
 
+_Function_class_(PH_TYPE_DELETE_PROCEDURE)
 VOID UpdateContextDeleteProcedure(
     _In_ PVOID Object,
     _In_ ULONG Flags
@@ -137,7 +138,7 @@ BOOLEAN UpdateCheckDirectoryElevationRequired(
     VOID
     )
 {
-    static PH_STRINGREF checkFileName = PH_STRINGREF_INIT(L"elevation_check");
+    static const PH_STRINGREF checkFileName = PH_STRINGREF_INIT(L"elevation_check");
     HANDLE fileHandle;
     PPH_STRING fileName;
 
@@ -230,7 +231,7 @@ BOOLEAN LastUpdateCheckExpired(
     {
         PhTimeToSecondsSince1970(&currentTimeUpdateTicks, &lastTimeUpdateSeconds);
         PhSetIntegerSetting(SETTING_NAME_LAST_CHECK, lastTimeUpdateSeconds);
-        return TRUE;
+        return FALSE; // FirstRun
     }
 
     PhSecondsSince1970ToTime(lastTimeUpdateSeconds, &lastTimeUpdateTicks);
@@ -249,7 +250,7 @@ PPH_STRING UpdateVersionString(
     VOID
     )
 {
-    static PH_STRINGREF versionHeader = PH_STRINGREF_INIT(L"SystemInformer-Build: ");
+    static const PH_STRINGREF versionHeader = PH_STRINGREF_INIT(L"SystemInformer-Build: ");
     ULONG majorVersion;
     ULONG minorVersion;
     ULONG buildVersion;
@@ -293,15 +294,19 @@ NTSTATUS UpdatePlatformSupportInformation(
 {
     NTSTATUS status;
     HANDLE fileHandle;
+    USHORT imageMachine;
+    ULONG imageDateStamp;
+    ULONG imageSizeOfImage;
+    PPH_STRING imageHashString = NULL;
     PH_MAPPED_IMAGE mappedImage;
     LARGE_INTEGER fileSize;
     PH_HASH_CONTEXT hashContext;
     ULONG64 bytesRemaining;
     ULONG numberOfBytesRead;
-    BYTE buffer[PAGE_SIZE];
-    BYTE hash[256 / 8];
+    ULONG bufferLength;
+    PBYTE buffer;
 
-    if (!NT_SUCCESS(status = PhCreateFile(
+    status = PhCreateFile(
         &fileHandle,
         FileName,
         FILE_GENERIC_READ,
@@ -309,14 +314,29 @@ NTSTATUS UpdatePlatformSupportInformation(
         FILE_SHARE_READ | FILE_SHARE_DELETE,
         FILE_OPEN,
         FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT
-        )))
+        );
+
+    if (!NT_SUCCESS(status))
         return status;
 
-    if (!NT_SUCCESS(status = PhGetFileSize(fileHandle, &fileSize)))
+    status = PhGetFileSize(fileHandle, &fileSize);
+
+    if (!NT_SUCCESS(status))
         goto CleanupExit;
 
-    if (!NT_SUCCESS(status = PhInitializeHash(&hashContext, Sha256HashAlgorithm)))
+    status = PhInitializeHash(&hashContext, Sha256HashAlgorithm);
+
+    if (!NT_SUCCESS(status))
         goto CleanupExit;
+
+    bufferLength = PAGE_SIZE * 2;
+    buffer = PhAllocateSafe(bufferLength);
+
+    if (!buffer)
+    {
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        goto CleanupExit;
+    }
 
     bytesRemaining = (ULONG64)fileSize.QuadPart;
 
@@ -325,7 +345,7 @@ NTSTATUS UpdatePlatformSupportInformation(
         status = PhReadFile(
             fileHandle,
             buffer,
-            sizeof(buffer),
+            bufferLength,
             NULL,
             &numberOfBytesRead
             );
@@ -345,24 +365,55 @@ NTSTATUS UpdatePlatformSupportInformation(
         bytesRemaining -= numberOfBytesRead;
     }
 
-    if (NT_SUCCESS(status = PhLoadMappedImageHeaderPageSize(NULL, fileHandle, &mappedImage)))
+    PhFree(buffer);
+
+    status = PhFinalHashString(
+        &hashContext,
+        &imageHashString
+        );
+
+    if (!NT_SUCCESS(status))
+        goto CleanupExit;
+
+    status = PhLoadMappedImageHeaderPageSize(
+        NULL,
+        fileHandle,
+        &mappedImage
+        );
+
+    if (!NT_SUCCESS(status))
+        goto CleanupExit;
+
+    __try
     {
-        *ImageMachine = mappedImage.NtHeaders->FileHeader.Machine;
-        *TimeDateStamp = mappedImage.NtHeaders->FileHeader.TimeDateStamp;
-        *SizeOfImage = mappedImage.NtHeaders->OptionalHeader.SizeOfImage;
+        imageMachine = mappedImage.NtHeaders->FileHeader.Machine;
+        imageDateStamp = mappedImage.NtHeaders->FileHeader.TimeDateStamp;
+        imageSizeOfImage = mappedImage.NtHeaders->OptionalHeader.SizeOfImage;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        status = GetExceptionCode();
+    }
 
-        if (NT_SUCCESS(status = PhFinalHash(&hashContext, hash, sizeof(hash), NULL)))
-        {
-            *HashString = PhBufferToHexString(hash, sizeof(hash));
-        }
+    PhUnloadMappedImage(&mappedImage);
 
-        PhUnloadMappedImage(&mappedImage);
+    if (!NT_SUCCESS(status))
+        goto CleanupExit;
+
+    if (NT_SUCCESS(status))
+    {
+        *ImageMachine = imageMachine;
+        *TimeDateStamp = imageDateStamp;
+        *SizeOfImage = imageSizeOfImage;
+        *HashString = imageHashString;
+
+        NtClose(fileHandle);
+        return STATUS_SUCCESS;
     }
 
 CleanupExit:
-
     NtClose(fileHandle);
-
+    PhClearReference(&imageHashString);
     return status;
 }
 
@@ -371,7 +422,7 @@ PPH_STRING UpdatePlatformSupportString(
     )
 {
     static CONST PH_STRINGREF platformHeader = PH_STRINGREF_INIT(L"SystemInformer-PlatformSupport: ");
-    static UPDATER_PLATFORM_SUPPORT_ENTRY platformFiles[] =
+    static CONST UPDATER_PLATFORM_SUPPORT_ENTRY platformFiles[] =
     {
         { KPH_DYN_CLASS_NTOSKRNL, PH_STRINGREF_INIT(L"\\SystemRoot\\System32\\ntoskrnl.exe") },
         { KPH_DYN_CLASS_NTKRLA57, PH_STRINGREF_INIT(L"\\SystemRoot\\System32\\ntkrla57.exe") },
@@ -471,7 +522,7 @@ PPH_STRING UpdateWindowsString(
 }
 
 ULONG64 ParseVersionString(
-    _Inout_ PPH_STRING VersionString
+    _In_ PPH_STRING VersionString
     )
 {
     PH_STRINGREF remaining;
@@ -483,6 +534,9 @@ ULONG64 ParseVersionString(
     ULONG64 minorInteger = 0;
     ULONG64 buildInteger = 0;
     ULONG64 revisionInteger = 0;
+
+    if (PhIsNullOrEmptyString(VersionString))
+        return 0;
 
     remaining = PhGetStringRef(VersionString);
     PhSplitStringRefAtChar(&remaining, L'.', &majorPart, &remaining);
@@ -520,7 +574,7 @@ ULONG64 ParseVersionString(
 
 BOOLEAN QueryUpdateData(
     _Inout_ PPH_UPDATER_CONTEXT Context,
-    _In_ PWSTR ServerName
+    _In_ PCWSTR ServerName
     )
 {
     NTSTATUS status;
@@ -601,7 +655,7 @@ BOOLEAN QueryUpdateData(
         }
     }
 
-    if (!NT_SUCCESS(status = PhHttpSendRequest(httpContext, NULL, 0, 0)))
+    if (!NT_SUCCESS(status = PhHttpSendRequest(httpContext, PH_HTTP_NO_ADDITIONAL_HEADERS, 0, PH_HTTP_NO_REQUEST_DATA, 0, 0)))
         goto CleanupExit;
     if (!NT_SUCCESS(status = PhHttpReceiveResponse(httpContext)))
         goto CleanupExit;
@@ -620,20 +674,6 @@ BOOLEAN QueryUpdateData(
     Context->SetupFileHash = PhGetJsonValueAsString(jsonObject, "setup_hash");
     Context->SetupFileSignature = PhGetJsonValueAsString(jsonObject, "setup_sig");
 
-#if defined(FORCE_FUTURE_VERSION)
-    PhGetPhVersionNumbers(&majorVersion, &minorVersion, &buildVersion, &revisionVersion);
-    Context->CurrentVersion = MAKE_VERSION_ULONGLONG(USHRT_MAX, USHRT_MAX, USHRT_MAX, USHRT_MAX);
-    Context->LatestVersion = MAKE_VERSION_ULONGLONG(majorVersion, minorVersion, buildVersion, revisionVersion);
-#elif defined(FORCE_LATEST_VERSION)
-    PhGetPhVersionNumbers(&majorVersion, &minorVersion, &buildVersion, &revisionVersion);
-    Context->CurrentVersion = MAKE_VERSION_ULONGLONG(0, 0, 0, 0);
-    Context->LatestVersion = MAKE_VERSION_ULONGLONG(majorVersion, minorVersion, buildVersion, revisionVersion);
-#else
-    PhGetPhVersionNumbers(&majorVersion, &minorVersion, &buildVersion, &revisionVersion);
-    Context->CurrentVersion = MAKE_VERSION_ULONGLONG(majorVersion, minorVersion, buildVersion, revisionVersion);
-    Context->LatestVersion = ParseVersionString(Context->Version);
-#endif
-
     PhFreeJsonObject(jsonObject);
 
     if (PhIsNullOrEmptyString(Context->Version))
@@ -650,6 +690,20 @@ BOOLEAN QueryUpdateData(
         goto CleanupExit;
     if (PhIsNullOrEmptyString(Context->CommitHash))
         goto CleanupExit;
+
+#if defined(FORCE_FUTURE_VERSION)
+    PhGetPhVersionNumbers(&majorVersion, &minorVersion, &buildVersion, &revisionVersion);
+    Context->CurrentVersion = MAKE_VERSION_ULONGLONG(USHRT_MAX, USHRT_MAX, USHRT_MAX, USHRT_MAX);
+    Context->LatestVersion = MAKE_VERSION_ULONGLONG(majorVersion, minorVersion, buildVersion, revisionVersion);
+#elif defined(FORCE_LATEST_VERSION)
+    PhGetPhVersionNumbers(&majorVersion, &minorVersion, &buildVersion, &revisionVersion);
+    Context->CurrentVersion = MAKE_VERSION_ULONGLONG(0, 0, 0, 0);
+    Context->LatestVersion = MAKE_VERSION_ULONGLONG(majorVersion, minorVersion, buildVersion, revisionVersion);
+#else
+    PhGetPhVersionNumbers(&majorVersion, &minorVersion, &buildVersion, &revisionVersion);
+    Context->CurrentVersion = MAKE_VERSION_ULONGLONG(majorVersion, minorVersion, buildVersion, revisionVersion);
+    Context->LatestVersion = ParseVersionString(Context->Version);
+#endif
 
     success = TRUE;
 
@@ -674,7 +728,7 @@ BOOLEAN QueryUpdateDataWithFailover(
     _Inout_ PPH_UPDATER_CONTEXT Context
     )
 {
-    static PWSTR Servers[] =
+    static CONST PCWSTR Servers[] =
     {
         L"system-informer.com",
         L"systeminformer.com",
@@ -704,7 +758,7 @@ NTSTATUS UpdateCheckSilentThread(
         goto CleanupExit;
 #endif
 
-    PhDelayExecution(5 * 1000);
+    //PhDelayExecution(5 * 1000);
 
     PhClearCacheDirectory(context->PortableMode);
 
@@ -727,8 +781,24 @@ NTSTATUS UpdateCheckSilentThread(
                 // We have data we're going to cache and pass into the dialog
                 context->HaveData = TRUE;
 
-                // Show the dialog asynchronously on a new thread.
-                ShowUpdateDialog(context);
+                if (PhGetIntegerSetting(SETTING_NAME_SHOW_NOTIFICATION))
+                {
+                    if (!HR_SUCCESS(PhShowIconNotificationEx(
+                        L"New version of System Informer available",
+                        L"Help menu > Check for updates",
+                        5000,
+                        NULL,
+                        NULL
+                        )))
+                    {
+                        ShowUpdateDialog(context);
+                    }
+                }
+                else
+                {
+                    // Show the dialog asynchronously on a new thread.
+                    ShowUpdateDialog(context);
+                }
             }
         }
     }
@@ -802,16 +872,16 @@ PPH_STRING UpdateParseDownloadFileName(
     PH_STRINGREF pathPart;
     PH_STRINGREF namePart;
     PPH_STRING downloadFileName;
-    PPH_STRING localfileName;
+    PPH_STRING localFileName;
 
     if (!PhSplitStringRefAtLastChar(&DownloadUrlPath->sr, L'/', &pathPart, &namePart))
         return NULL;
 
     downloadFileName = PhCreateString2(&namePart);
-    localfileName = PhCreateCacheFile(Context->PortableMode, downloadFileName, FALSE);
+    localFileName = PhCreateCacheFile(Context->PortableMode, downloadFileName, FALSE);
     PhDereferenceObject(downloadFileName);
 
-    return localfileName;
+    return localFileName;
 }
 
 _Function_class_(USER_THREAD_START_ROUTINE)
@@ -837,9 +907,9 @@ NTSTATUS UpdateDownloadThread(
     ULONG64 timeBitsPerSecond;
     LARGE_INTEGER allocationSize;
     ULONG bytesDownloaded = 0;
+    ULONG bytesWritten = 0;
     ULONG_PTR totalDownloaded = 0;
     PPH_STRING string;
-    IO_STATUS_BLOCK isb;
     PBYTE httpBuffer = NULL;
     ULONG httpBufferLength;
 
@@ -864,7 +934,7 @@ NTSTATUS UpdateDownloadThread(
 
     SendMessage(context->DialogHandle, TDM_UPDATE_ELEMENT_TEXT, TDE_MAIN_INSTRUCTION, (LPARAM)L"Sending download request...");
 
-    if (!NT_SUCCESS(status = PhHttpSendRequest(httpContext, NULL, 0, 0)))
+    if (!NT_SUCCESS(status = PhHttpSendRequest(httpContext, PH_HTTP_NO_ADDITIONAL_HEADERS, 0, PH_HTTP_NO_REQUEST_DATA, 0, 0)))
         goto CleanupExit;
 
     SendMessage(context->DialogHandle, TDM_UPDATE_ELEMENT_TEXT, TDE_MAIN_INSTRUCTION, (LPARAM)L"Waiting for response...");
@@ -876,7 +946,7 @@ NTSTATUS UpdateDownloadThread(
     if (!NT_SUCCESS(status = PhHttpQueryHeaderUlong(httpContext, PH_HTTP_QUERY_CONTENT_LENGTH, &contentLength)))
         goto CleanupExit;
 
-    httpBufferLength = PAGE_SIZE;
+    httpBufferLength = PAGE_SIZE * 2;
     httpBuffer = PhAllocateSafe(httpBufferLength);
 
     if (!httpBuffer)
@@ -890,8 +960,8 @@ NTSTATUS UpdateDownloadThread(
     SendMessage(context->DialogHandle, TDM_UPDATE_ELEMENT_TEXT, TDE_CONTENT, (LPARAM)L"Downloaded: ~ of ~ (0%)\r\nSpeed: ~ KB/s");
     PhDereferenceObject(string);
 
+    // Create temporary file.
     {
-        // Create temporary path.
         context->SetupFilePath = UpdateParseDownloadFileName(context, downloadUrlPath);
 
         if (PhIsNullOrEmptyString(context->SetupFilePath))
@@ -902,7 +972,6 @@ NTSTATUS UpdateDownloadThread(
 
         allocationSize.QuadPart = contentLength;
 
-        // Create temporary file.
         status = PhCreateFileWin32Ex(
             &tempFileHandle,
             PhGetString(context->SetupFilePath),
@@ -936,36 +1005,34 @@ NTSTATUS UpdateDownloadThread(
         if (!NT_SUCCESS(status))
             goto CleanupExit;
 
-        // If we get zero bytes, the file was uploaded or there was an error
+        // If we get zero bytes, the file was downloaded or there was an error.
         if (bytesDownloaded == 0)
             break;
 
-        // If the dialog was closed, just cleanup and exit
+        // Update was cancelled, cleanup and exit.
         if (context->Cancel)
             goto CleanupExit;
 
         // Update the hash of bytes we downloaded.
-        if (!NT_SUCCESS(status = UpdaterUpdateHash(hashContext, httpBuffer, bytesDownloaded)))
+        status = UpdaterHashData(hashContext, httpBuffer, bytesDownloaded);
+
+        if (!NT_SUCCESS(status))
             goto CleanupExit;
 
         // Write the downloaded bytes to disk.
-        if (!NT_SUCCESS(status = NtWriteFile(
+        status = PhWriteFile(
             tempFileHandle,
-            NULL,
-            NULL,
-            NULL,
-            &isb,
             httpBuffer,
             bytesDownloaded,
             NULL,
-            NULL
-            )))
-        {
+            &bytesWritten
+            );
+
+        if (!NT_SUCCESS(status))
             goto CleanupExit;
-        }
 
         // Check the number of bytes written are the same we downloaded.
-        if (bytesDownloaded != isb.Information)
+        if (bytesDownloaded != bytesWritten)
         {
             status = STATUS_DATA_CHECKSUM_ERROR;
             goto CleanupExit;
@@ -978,14 +1045,14 @@ NTSTATUS UpdateDownloadThread(
         PhQuerySystemTime(&timeNow);
 
         // Calculate the number of ticks
-        totalDownloaded += isb.Information;
+        totalDownloaded += bytesWritten;
         timeTicks = (timeNow.QuadPart - timeStart.QuadPart) / PH_TICKS_PER_SEC;
         timeBitsPerSecond = timeTicks ? totalDownloaded / timeTicks : 0;
 
 #ifdef FORCE_NO_STATUS_TIMER
-        ULONG percent = totalDownloaded * 100 / contentLength;
+        ULONG percent = (ULONG)totalDownloaded * 100 / (ULONG)contentLength;
         PH_FORMAT format[9];
-        WCHAR string[MAX_PATH];
+        WCHAR stringformat[MAX_PATH];
 
         // L"Downloaded: %s / %s (%.0f%%)\r\nSpeed: %s/s"
         PhInitFormatS(&format[0], L"Downloaded: ");
@@ -998,9 +1065,14 @@ NTSTATUS UpdateDownloadThread(
         PhInitFormatSize(&format[7], timeBitsPerSecond);
         PhInitFormatS(&format[8], L"/s");
 
-        if (PhFormatToBuffer(format, RTL_NUMBER_OF(format), string, sizeof(string), NULL))
+        if (PhFormatToBuffer(format, RTL_NUMBER_OF(format), stringformat, sizeof(stringformat), NULL))
         {
-            SendMessage(context->DialogHandle, TDM_UPDATE_ELEMENT_TEXT, TDE_CONTENT, (LPARAM)string);
+            SendMessage(context->DialogHandle, TDM_UPDATE_ELEMENT_TEXT, TDE_CONTENT, (LPARAM)stringformat);
+        }
+        if (context->ProgressMarquee)
+        {
+            SendMessage(context->DialogHandle, TDM_SET_MARQUEE_PROGRESS_BAR, FALSE, 0);
+            context->ProgressMarquee = FALSE;
         }
 
         SendMessage(context->DialogHandle, TDM_SET_PROGRESS_BAR_POS, (WPARAM)percent, 0);
@@ -1089,7 +1161,7 @@ LRESULT CALLBACK TaskDialogSubclassProc(
 
     switch (uMsg)
     {
-    case WM_NCDESTROY:
+    case WM_DESTROY:
         {
             context->Cancel = TRUE;
 
@@ -1339,20 +1411,30 @@ VOID StartInitialCheck(
 }
 
 VOID ShowStartupUpdateDialog(
-    VOID
+    _In_ PPH_STRING CacheString
     )
 {
     PH_AUTO_POOL autoPool;
     PPH_UPDATER_CONTEXT context;
-    PPH_STRING jsonString;
+    PPH_BYTES jsonString;
+
+    if (PhIsNullOrEmptyString(CacheString))
+        return;
 
     PhInitializeAutoPool(&autoPool);
 
     context = CreateUpdateContext(TRUE);
 
-    jsonString = PhGetStringSetting(SETTING_NAME_UPDATE_DATA);
+    jsonString = PhCreateBytesEx(
+        NULL,
+        CacheString->Length / sizeof(WCHAR) / 2
+        );
 
-    if (jsonString && jsonString->Length)
+    if (PhHexStringToBufferEx(
+        &CacheString->sr,
+        jsonString->Length,
+        jsonString->Buffer
+        ))
     {
         PVOID jsonObject;
 
@@ -1396,13 +1478,29 @@ VOID ShowStartupUpdateDialog(
         goto CleanupExit;
     }
 
-    TASKDIALOGCONFIG config = { sizeof(TASKDIALOGCONFIG) };
-    config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_CAN_BE_MINIMIZED;
-    config.hInstance = NtCurrentImageBase();
-    config.pszContent = L"Initializing...";
-    config.lpCallbackData = (LONG_PTR)context;
-    config.pfCallback = TaskDialogBootstrapCallback;
-    PhShowTaskDialog(&config, NULL, NULL, NULL);
+    if (PhGetIntegerSetting(SETTING_NAME_SHOW_NOTIFICATION))
+    {
+        if (HR_SUCCESS(PhShowIconNotificationEx(
+            L"New version of System Informer available",
+            L"Help menu > Check for updates",
+            5000,
+            NULL,
+            NULL
+            )))
+        {
+            goto CleanupExit;
+        }
+    }
+
+    {
+        TASKDIALOGCONFIG config = { sizeof(TASKDIALOGCONFIG) };
+        config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_CAN_BE_MINIMIZED;
+        config.hInstance = NtCurrentImageBase();
+        config.pszContent = L"Initializing...";
+        config.lpCallbackData = (LONG_PTR)context;
+        config.pfCallback = TaskDialogBootstrapCallback;
+        PhShowTaskDialog(&config, NULL, NULL, NULL);
+    }
 
 CleanupExit:
     PhDereferenceObject(context);

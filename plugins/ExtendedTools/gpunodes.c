@@ -99,6 +99,7 @@ VOID EtShowGpuNodesDialog(
     PostMessage(EtGpuNodesWindowHandle, WM_PH_SHOW_DIALOG, 0, 0);
 }
 
+_Function_class_(PH_CALLBACK_FUNCTION)
 static VOID ProcessesUpdatedCallback(
     _In_opt_ PVOID Parameter,
     _In_opt_ PVOID Context
@@ -177,7 +178,7 @@ INT_PTR CALLBACK EtpGpuNodesDlgProc(
                 &ProcessesUpdatedCallbackRegistration
                 );
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     case WM_DESTROY:
@@ -197,6 +198,12 @@ INT_PTR CALLBACK EtpGpuNodesDlgProc(
             PhDeleteLayoutManager(&LayoutManager);
 
             PostQuitMessage(0);
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&LayoutManager);
         }
         break;
     case WM_SIZE:
@@ -223,7 +230,7 @@ INT_PTR CALLBACK EtpGpuNodesDlgProc(
 
             deferHandle = BeginDeferWindowPos(EtGpuTotalNodeCount);
 
-            GetClientRect(hwndDlg, &clientRect);
+            PhGetClientRect(hwndDlg, &clientRect);
             cellHeight = (clientRect.bottom - LayoutMargin.top - LayoutMargin.bottom - GRAPH_PADDING * numberOfYPaddings) / numberOfRows;
             y = LayoutMargin.top;
             i = 0;
@@ -307,7 +314,7 @@ INT_PTR CALLBACK EtpGpuNodesDlgProc(
                     PhGetSizeDpiValue(&padding, dpiValue, TRUE);
 
                     drawInfo->Flags = PH_GRAPH_USE_GRID_X | PH_GRAPH_USE_GRID_Y | (EtEnableScaleGraph ? PH_GRAPH_LABEL_MAX_Y : 0);
-                    PhSiSetColorsGraphDrawInfo(drawInfo, PhGetIntegerSetting(L"ColorCpuKernel"), 0, dpiValue);
+                    PhSiSetColorsGraphDrawInfo(drawInfo, PhGetIntegerSetting(SETTING_COLOR_CPU_KERNEL), 0, dpiValue);
 
                     for (i = 0; i < EtGpuTotalNodeCount; i++)
                     {

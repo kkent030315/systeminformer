@@ -117,6 +117,7 @@ VOID PhFlushNetworkItemResolveCache(
 //    _In_ PPH_IP_ADDRESS Address
 //    );
 
+_Function_class_(PH_PROVIDER_FUNCTION)
 VOID PhNetworkProviderUpdate(
     _In_ PVOID Object
     );
@@ -188,6 +189,14 @@ typedef ULONG (WINAPI *_InternalGetBoundTcp6EndpointTable)(
     _Out_ _When_(return!=0, _Notnull_) PVOID* BoundTcpTable, // PMIB_TCP6TABLE2
     _In_ PVOID HeapHandle,
     _In_opt_ ULONG HeapFlags
+    );
+
+// netsup
+
+NTSTATUS
+NTAPI
+PhSetTcpEntry(
+    _In_ PPH_NETWORK_ITEM NetworkItem
     );
 
 #endif

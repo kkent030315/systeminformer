@@ -77,6 +77,8 @@ VOID EtGpuMonitorInitialization(
     {
         ULONG i;
 
+        PhQueryPerformanceFrequency(&EtGpuClockTotalRunningTimeFrequency);
+
         PhInitializeCircularBuffer_FLOAT(&EtGpuNodeHistory, EtSampleCount);
         PhInitializeCircularBuffer_ULONG(&EtMaxGpuNodeHistory, EtSampleCount);
         PhInitializeCircularBuffer_FLOAT(&EtMaxGpuNodeUsageHistory, EtSampleCount);
@@ -151,7 +153,7 @@ PETP_GPU_ADAPTER EtpAddGpuAdapter(
                 sizeof(D3DKMT_NODEMETADATA)
                 )))
             {
-                PhAddItemList(adapter->NodeNameList, EtGetNodeEngineTypeString(metaDataInfo));
+                PhAddItemList(adapter->NodeNameList, EtGetNodeEngineTypeString(&metaDataInfo));
             }
             else
             {
@@ -423,8 +425,6 @@ BOOLEAN EtpGpuInitializeD3DStatistics(
 
     if (EtGpuTotalNodeCount == 0)
         return FALSE;
-
-    PhQueryPerformanceFrequency(&EtGpuClockTotalRunningTimeFrequency);
 
     return TRUE;
 }

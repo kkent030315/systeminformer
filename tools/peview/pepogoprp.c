@@ -59,7 +59,7 @@ VOID PvEnumerateImagePogoSections(
             PhSetListViewSubItem(ListViewHandle, lvItemIndex, 1, entry->Name);
             PhPrintPointer(value, UlongToPtr(entry->Rva));
             PhSetListViewSubItem(ListViewHandle, lvItemIndex, 2, value);
-            PhPrintPointer(value, PTR_ADD_OFFSET(entry->Rva, entry->Size));
+            PhPrintPointer(value, UlongToPtr(entry->Rva + entry->Size));
             PhSetListViewSubItem(ListViewHandle, lvItemIndex, 3, value);
             PhSetListViewSubItem(ListViewHandle, lvItemIndex, 4, PhaFormatSize(entry->Size, ULONG_MAX)->Buffer);
 
@@ -94,9 +94,9 @@ VOID PvEnumerateImagePogoSections(
 
                 if (imageSectionData = PhMappedImageRvaToVa(&PvMappedImage, entry->Rva, NULL))
                 {
-                    if (PhCalculateEntropy(imageSectionData, entry->Size, &imageSectionEntropy, NULL))
+                    if (PhCalculateEntropy(imageSectionData, entry->Size, &imageSectionEntropy, NULL, NULL))
                     {
-                        entropyString = PhFormatEntropy(imageSectionEntropy, 2, 0, 0);
+                        entropyString = PhFormatEntropy(imageSectionEntropy, 2, 0, 0, 0, 0);
                         PhSetListViewSubItem(ListViewHandle, lvItemIndex, 7, entropyString->Buffer);
                         PhDereferenceObject(entropyString);
                     }
@@ -314,7 +314,7 @@ BOOLEAN PvGetCRTFunctionSegment(
     {
         PIMAGE_DEBUG_POGO_ENTRY debugPogoEntry;
 
-        if (debugEntry->Signature != IMAGE_DEBUG_POGO_SIGNATURE_LTCG && debugEntry->Signature != IMAGE_DEBUG_POGO_SIGNATURE_PGU)
+        if (debugEntry->Signature != IMAGE_DEBUG_POGO_SIGNATURE_LTCG && debugEntry->Signature != IMAGE_DEBUG_POGO_SIGNATURE_PGI && debugEntry->Signature != IMAGE_DEBUG_POGO_SIGNATURE_PGO && debugEntry->Signature != IMAGE_DEBUG_POGO_SIGNATURE_PGU && debugEntry->Signature != IMAGE_DEBUG_POGO_SIGNATURE_SPGO)
         {
             if (!(debugEntry->Signature == 0 && debugEntryLength > sizeof(IMAGE_DEBUG_POGO_SIGNATURE)))
                 return FALSE;

@@ -20,7 +20,7 @@ VOID RichEditSetText(
     _In_ PWSTR Text
     )
 {
-    if (PhGetIntegerSetting(L"EnableThemeSupport"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT))
     {
         CHARFORMAT cf;
 
@@ -28,7 +28,7 @@ VOID RichEditSetText(
         cf.cbSize = sizeof(CHARFORMAT);
         cf.dwMask = CFM_COLOR;
 
-        switch (PhGetIntegerSetting(L"GraphColorMode"))
+        switch (PhGetIntegerSetting(SETTING_GRAPH_COLOR_MODE))
         {
         case 0: // New colors
             cf.crTextColor = RGB(0x0, 0x0, 0x0);
@@ -586,7 +586,7 @@ BOOLEAN WhoisConnectServer(
     SOCKET socketHandle;
     PDNS_RECORD dnsRecordList;
 
-    if (PhGetIntegerSetting(L"EnableNetworkResolveDoH"))
+    if (PhGetIntegerSetting(SETTING_ENABLE_NETWORK_RESOLVE_DOH))
     {
         dnsRecordList = PhDnsQuery(
             NULL,
@@ -691,6 +691,7 @@ BOOLEAN WhoisQueryServer(
     return FALSE;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS NetworkWhoisThreadStart(
     _In_ PVOID Parameter
     )
@@ -816,7 +817,7 @@ VOID WhoisSetTextFont(
     PPH_STRING fontHexString;
     LOGFONT font;
 
-    fontHexString = PhaGetStringSetting(L"Font");
+    fontHexString = PhaGetStringSetting(SETTING_FONT);
 
     if (
         fontHexString->Length / sizeof(WCHAR) / 2 == sizeof(LOGFONT) &&
@@ -912,12 +913,12 @@ INT_PTR CALLBACK WhoisDlgProc(
             PhInitializeLayoutManager(&context->LayoutManager, hwndDlg);
             PhAddLayoutItem(&context->LayoutManager, context->RichEditHandle, NULL, PH_ANCHOR_ALL);
 
-            if (PhGetIntegerPairSetting(SETTING_NAME_WHOIS_WINDOW_POSITION).X != 0)
+            if (PhValidWindowPlacementFromSetting(SETTING_NAME_WHOIS_WINDOW_POSITION))
                 PhLoadWindowPlacementFromSetting(SETTING_NAME_WHOIS_WINDOW_POSITION, SETTING_NAME_WHOIS_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, context->ParentWindowHandle);
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
 
             PhReferenceObject(context);
             PhCreateThread2(NetworkWhoisThreadStart, (PVOID)context);
@@ -948,7 +949,15 @@ INT_PTR CALLBACK WhoisDlgProc(
         }
         break;
     case WM_SIZE:
-        PhLayoutManagerLayout(&context->LayoutManager);
+        {
+            PhLayoutManagerLayout(&context->LayoutManager);
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&context->LayoutManager);
+        }
         break;
     case WM_NOTIFY:
         {
@@ -1073,6 +1082,7 @@ INT_PTR CALLBACK WhoisDlgProc(
     return FALSE;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS NetworkWhoisDialogThreadStart(
     _In_ PVOID Parameter
     )

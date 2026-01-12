@@ -23,6 +23,7 @@ typedef struct _PIPE_ENUM_DIALOG_CONTEXT
     BOOLEAN UseKph;
 } PIPE_ENUM_DIALOG_CONTEXT, *PPIPE_ENUM_DIALOG_CONTEXT;
 
+_Function_class_(PH_ENUM_DIRECTORY_FILE)
 BOOLEAN NTAPI EtNamedPipeDirectoryCallback(
     _In_ HANDLE RootDirectory,
     _In_ PFILE_DIRECTORY_INFORMATION Information,
@@ -37,7 +38,7 @@ VOID EtEnumerateNamedPipeDirectory(
     _In_ PPIPE_ENUM_DIALOG_CONTEXT Context
     )
 {
-    static PH_STRINGREF objectName = PH_STRINGREF_INIT(DEVICE_NAMED_PIPE);
+    static CONST PH_STRINGREF objectName = PH_STRINGREF_INIT(DEVICE_NAMED_PIPE);
     NTSTATUS status;
     HANDLE pipeDirectoryHandle;
     IO_STATUS_BLOCK isb;
@@ -487,7 +488,7 @@ INT_PTR CALLBACK EtPipeEnumDlgProc(
             PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDRETRY), NULL, PH_ANCHOR_BOTTOM | PH_ANCHOR_LEFT);
             PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDOK), NULL, PH_ANCHOR_BOTTOM | PH_ANCHOR_RIGHT);
 
-            if (PhGetIntegerPairSetting(SETTING_NAME_PIPE_ENUM_WINDOW_POSITION).X != 0)
+            if (PhValidWindowPlacementFromSetting(SETTING_NAME_PIPE_ENUM_WINDOW_POSITION))
                 PhLoadWindowPlacementFromSetting(SETTING_NAME_PIPE_ENUM_WINDOW_POSITION, SETTING_NAME_PIPE_ENUM_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, context->ParentWindowHandle);
@@ -515,7 +516,7 @@ INT_PTR CALLBACK EtPipeEnumDlgProc(
                 PhSetExtendedListView(context->ListViewWndHandle);
                 PhLoadListViewColumnsFromSetting(SETTING_NAME_PIPE_ENUM_LISTVIEW_COLUMNS_WITH_KSI, context->ListViewWndHandle);
 
-                PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+                PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
 
                 EtEnumerateNamedPipeHandles(context);
             }
@@ -537,7 +538,7 @@ INT_PTR CALLBACK EtPipeEnumDlgProc(
                 PhSetExtendedListView(context->ListViewWndHandle);
                 PhLoadListViewColumnsFromSetting(SETTING_NAME_PIPE_ENUM_LISTVIEW_COLUMNS, context->ListViewWndHandle);
 
-                PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+                PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
 
                 EtEnumerateNamedPipeDirectory(context);
             }
@@ -558,7 +559,15 @@ INT_PTR CALLBACK EtPipeEnumDlgProc(
         }
         break;
     case WM_SIZE:
-        PhLayoutManagerLayout(&context->LayoutManager);
+        {
+            PhLayoutManagerLayout(&context->LayoutManager);
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&context->LayoutManager);
+        }
         break;
     case WM_COMMAND:
         {

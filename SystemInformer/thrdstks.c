@@ -11,6 +11,7 @@
 
 #include <phapp.h>
 #include <settings.h>
+#include <phsettings.h>
 #include <colmgr.h>
 #include <emenu.h>
 #include <symprv.h>
@@ -100,6 +101,7 @@ typedef struct _PH_THREAD_STACKS_FRAME_NODE
     WCHAR ReturnAddressString[PH_PTR_STR_LEN_1];
     PH_STRINGREF Architecture;
     PPH_STRING FrameDistanceString;
+    PPH_STRING SymbolStatusString;
 } PH_THREAD_STACKS_FRAME_NODE, *PPH_THREAD_STACKS_FRAME_NODE;
 
 typedef struct _PH_THREAD_STACKS_NODE
@@ -186,6 +188,7 @@ const ACCESS_MASK PhpThreadStacksThreadAccessMasks[] =
     THREAD_QUERY_LIMITED_INFORMATION,
 };
 
+_Function_class_(PH_TYPE_DELETE_PROCEDURE)
 VOID NTAPI PhpThreadStacksNodeDeleteProcedure(
     _In_ PVOID Object,
     _In_ ULONG Flags
@@ -244,6 +247,7 @@ PPH_THREAD_STACKS_NODE PhpThreadStacksCreateNode(
     return node;
 }
 
+_Function_class_(PH_TYPE_DELETE_PROCEDURE)
 VOID NTAPI PhpThreadStacksWorkerContextDeleteProcedure(
     _In_ PVOID Object,
     _In_ ULONG Flags
@@ -278,6 +282,7 @@ PPH_THREAD_STACKS_WORKER_CONTEXT PhpThreadStacksCreateWorkerContext(
     return context;
 }
 
+_Function_class_(PH_TYPE_DELETE_PROCEDURE)
 VOID NTAPI PhpThreadStacksContextDeleteProcedure(
     _In_ PVOID Object,
     _In_ ULONG Flags
@@ -435,7 +440,7 @@ VOID PhpThreadStacksCreateProcessNode(
     node->Symbol = PhReferenceObject(node->Process.ProcessName);
 
     if (node->Process.ProcessId == SYSTEM_PROCESS_ID)
-        node->Process.FileName = PhGetKernelFileName2();
+        node->Process.FileName = PhGetKernelFileName();
 
     if (NT_SUCCESS(PhOpenProcess(&processHandle, PROCESS_QUERY_LIMITED_INFORMATION, node->Process.ProcessId)))
     {
@@ -1286,11 +1291,11 @@ BOOLEAN NTAPI PhpThreadStacksTreeNewCallback(
             if (node->Type == PhThreadStacksNodeTypeFrame)
             {
                 if (context->HighlightInlineFrames && PhIsStackFrameTypeInline(node->Frame.StackFrame.InlineFrameContext))
-                    getNodeColor->BackColor = PhGetIntegerSetting(L"ColorInlineThreadStack");
+                    getNodeColor->BackColor = PhGetIntegerSetting(SETTING_COLOR_INLINE_THREAD_STACK);
                 else if (context->HighlightSystemFrames && (ULONG_PTR)node->Frame.StackFrame.PcAddress > PhSystemBasicInformation.MaximumUserModeAddress)
-                    getNodeColor->BackColor = PhGetIntegerSetting(L"ColorSystemThreadStack");
+                    getNodeColor->BackColor = PhGetIntegerSetting(SETTING_COLOR_SYSTEM_THREAD_STACK);
                 else if (context->HighlightUserFrames && (ULONG_PTR)node->Frame.StackFrame.PcAddress <= PhSystemBasicInformation.MaximumUserModeAddress)
-                    getNodeColor->BackColor = PhGetIntegerSetting(L"ColorUserThreadStack");
+                    getNodeColor->BackColor = PhGetIntegerSetting(SETTING_COLOR_USER_THREAD_STACK);
 
                 getNodeColor->Flags = TN_AUTO_FORECOLOR;
             }
@@ -1302,7 +1307,9 @@ BOOLEAN NTAPI PhpThreadStacksTreeNewCallback(
 
             data.TreeNewHandle = hwnd;
             data.MouseEvent = Parameter1;
+            data.DefaultSortOrder = NoSortOrder;
             data.DefaultSortColumn = 0;
+
             PhInitializeTreeNewColumnMenuEx(&data, 0);
 
             data.Selection = PhShowEMenu(
@@ -1482,17 +1489,17 @@ BOOLEAN NTAPI PhpThreadStacksTreeNewCallback(
                     break;
                 case 8:
                     context->HighlightUserFrames = !context->HighlightUserFrames;
-                    PhSetIntegerSetting(L"UseColorUserThreadStack", context->HighlightUserFrames);
+                    PhSetIntegerSetting(SETTING_USE_COLOR_USER_THREAD_STACK, context->HighlightUserFrames);
                     PhpThreadStacksInvalidateNodes(context);
                     break;
                 case 9:
                     context->HighlightSystemFrames = !context->HighlightSystemFrames;
-                    PhSetIntegerSetting(L"UseColorSystemThreadStack", context->HighlightSystemFrames);
+                    PhSetIntegerSetting(SETTING_USE_COLOR_SYSTEM_THREAD_STACK, context->HighlightSystemFrames);
                     PhpThreadStacksInvalidateNodes(context);
                     break;
                 case 10:
                     context->HighlightInlineFrames = !context->HighlightInlineFrames;
-                    PhSetIntegerSetting(L"UseColorInlineThreadStack", context->HighlightInlineFrames);
+                    PhSetIntegerSetting(SETTING_USE_COLOR_INLINE_THREAD_STACK, context->HighlightInlineFrames);
                     PhpThreadStacksInvalidateNodes(context);
                     break;
                 case 100:
@@ -1533,7 +1540,7 @@ VOID PhpThreadStacksSaveSettingsTreeList(
     PPH_STRING settings;
 
     settings = PhCmSaveSettings(Context->TreeNewHandle);
-    PhSetStringSetting2(L"ThreadStacksTreeListColumns", &settings->sr);
+    PhSetStringSetting2(SETTING_THREAD_STACKS_TREE_LIST_COLUMNS, &settings->sr);
     PhDereferenceObject(settings);
 }
 
@@ -1637,9 +1644,9 @@ INT_PTR CALLBACK PhpThreadStacksDlgProc(
             context->MessageHandle = GetDlgItem(hwndDlg, IDC_MESSAGE);
             context->SearchWindowHandle = GetDlgItem(hwndDlg, IDC_FILTER);
 
-            context->HighlightUserFrames = !!PhGetIntegerSetting(L"UseColorUserThreadStack");
-            context->HighlightSystemFrames = !!PhGetIntegerSetting(L"UseColorSystemThreadStack");
-            context->HighlightInlineFrames = !!PhGetIntegerSetting(L"UseColorInlineThreadStack");
+            context->HighlightUserFrames = !!PhGetIntegerSetting(SETTING_USE_COLOR_USER_THREAD_STACK);
+            context->HighlightSystemFrames = !!PhGetIntegerSetting(SETTING_USE_COLOR_SYSTEM_THREAD_STACK);
+            context->HighlightInlineFrames = !!PhGetIntegerSetting(SETTING_USE_COLOR_INLINE_THREAD_STACK);
 
             PhSetApplicationWindowIcon(hwndDlg);
             PhRegisterDialog(hwndDlg);
@@ -1665,8 +1672,8 @@ INT_PTR CALLBACK PhpThreadStacksDlgProc(
             context->MinimumSize.bottom = 100;
             MapDialogRect(hwndDlg, &context->MinimumSize);
 
-            if (PhGetIntegerPairSetting(L"ThreadStacksWindowPosition").X)
-                PhLoadWindowPlacementFromSetting(L"ThreadStacksWindowPosition", L"ThreadStacksWindowSize", hwndDlg);
+            if (PhValidWindowPlacementFromSetting(SETTING_THREAD_STACKS_WINDOW_POSITION))
+                PhLoadWindowPlacementFromSetting(SETTING_THREAD_STACKS_WINDOW_POSITION, SETTING_THREAD_STACKS_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, context->ParentWindowHandle);
 
@@ -1694,7 +1701,7 @@ INT_PTR CALLBACK PhpThreadStacksDlgProc(
 
             PhKillTimer(hwndDlg, PH_WINDOW_TIMER_DEFAULT);
 
-            PhSaveWindowPlacementToSetting(L"ThreadStacksWindowPosition", L"ThreadStacksWindowSize", hwndDlg);
+            PhSaveWindowPlacementToSetting(SETTING_THREAD_STACKS_WINDOW_POSITION, SETTING_THREAD_STACKS_WINDOW_SIZE, hwndDlg);
 
             PhUnregisterWindowCallback(hwndDlg);
 

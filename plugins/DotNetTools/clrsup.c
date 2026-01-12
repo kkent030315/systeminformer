@@ -366,7 +366,6 @@ PDN_DOTNET_ASSEMBLY_ENTRY DnGetDotNetAssemblyModuleDataFromAddress(
     PDN_DOTNET_ASSEMBLY_ENTRY entry;
     DacpModuleData moduleData = { 0 };
     IXCLRDataModule* xclrDataModule = NULL;
-    ULONG32 xclrDataModuleRequestVersion = 0;
     CLRDATA_ADDRESS pefileBaseAddress = 0;
     ULONG moduleFlags = 0;
     GUID moduleId;
@@ -777,13 +776,13 @@ VOID DnDestroyProcessDotNetAppDomainList(
 
     for (ULONG i = 0; i < ProcessAppdomainList->Count; i++)
     {
-        appdomain = ProcessAppdomainList->Items[i];
+        appdomain = PhItemList(ProcessAppdomainList, i);
 
         if (appdomain->AssemblyList)
         {
             for (ULONG j = 0; j < appdomain->AssemblyList->Count; j++)
             {
-                assembly = appdomain->AssemblyList->Items[j];
+                assembly = PhItemList(appdomain->AssemblyList, j);
 
                 if (assembly->AssemblyName)
                     PhDereferenceObject(assembly->AssemblyName);
@@ -823,7 +822,7 @@ PPH_BYTES DnProcessAppDomainListSerialize(
 
     for (i = 0; i < ProcessAppdomainList->Count; i++)
     {
-        PDN_PROCESS_APPDOMAIN_ENTRY appdomain = ProcessAppdomainList->Items[i];
+        PDN_PROCESS_APPDOMAIN_ENTRY appdomain = PhItemList(ProcessAppdomainList, i);
         PVOID appdomainEntry;
         PPH_BYTES valueUtf8;
 
@@ -846,7 +845,7 @@ PPH_BYTES DnProcessAppDomainListSerialize(
 
             for (ULONG j = 0; j < appdomain->AssemblyList->Count; j++)
             {
-                PDN_DOTNET_ASSEMBLY_ENTRY assembly = appdomain->AssemblyList->Items[j];
+                PDN_DOTNET_ASSEMBLY_ENTRY assembly = PhItemList(appdomain->AssemblyList, i);
                 PVOID assemblyEntry;
 
                 assemblyEntry = PhCreateJsonObject();
@@ -1012,6 +1011,7 @@ typedef struct _DN_ENUM_CLR_RUNTIME_CONTEXT
     PPH_LIST RuntimeList;
 } DN_ENUM_CLR_RUNTIME_CONTEXT, *PDN_ENUM_CLR_RUNTIME_CONTEXT;
 
+_Function_class_(PH_ENUM_GENERIC_MODULES_CALLBACK)
 static BOOLEAN NTAPI DnGetClrRuntimeCallback(
     _In_ PPH_MODULE_INFO Module,
     _In_ PVOID Context
@@ -1072,7 +1072,7 @@ VOID DnGetProcessDotNetRuntimes(
 
     for (ULONG i = 0; i < context.RuntimeList->Count; i++)
     {
-        PDN_PROCESS_CLR_RUNTIME_ENTRY entry = context.RuntimeList->Items[i];
+        PDN_PROCESS_CLR_RUNTIME_ENTRY entry = PhItemList(context.RuntimeList, i);
 
         dprintf(
             "Runtime version: %S @ 0x%I64x [%S]\n",
@@ -1119,6 +1119,7 @@ typedef struct _CLR_RUNTIME_INFO
     SYMBOL_INDEX DbiModuleIndex[24];
 } CLR_RUNTIME_INFO, *PCLR_RUNTIME_INFO;
 
+_Function_class_(PH_ENUM_GENERIC_MODULES_CALLBACK)
 static BOOLEAN NTAPI DnGetCoreClrPathCallback(
     _In_ PPH_MODULE_INFO Module,
     _In_ PVOID Context
@@ -1255,6 +1256,7 @@ static BOOLEAN DnClrVerifyFileIsChainedToMicrosoft(
     return TRUE;
 }
 
+_Function_class_(PH_ENUM_DIRECTORY_FILE)
 static BOOLEAN DnpMscordaccoreDirectoryCallback(
     _In_ HANDLE RootDirectory,
     _In_ PFILE_DIRECTORY_INFORMATION Information,
@@ -1348,7 +1350,7 @@ PVOID DnLoadMscordaccore(
 
     for (ULONG i = 0; i < directoryList->Count; i++)
     {
-        PPH_STRING directoryName = directoryList->Items[i];
+        PPH_STRING directoryName = PhItemList(directoryList, i);
         PPH_STRING fileName;
         PPH_STRING nativeName;
 
@@ -1770,6 +1772,7 @@ typedef struct _DN_CLRDT_ENUM_IMAGE_BASE_CONTEXT
     PVOID BaseAddress;
 } DN_CLRDT_ENUM_IMAGE_BASE_CONTEXT, *PDN_CLRDT_ENUM_IMAGE_BASE_CONTEXT;
 
+_Function_class_(PH_ENUM_GENERIC_MODULES_CALLBACK)
 BOOLEAN NTAPI DnClrDataTarget_EnumImageBaseCallback(
     _In_ PPH_MODULE_INFO Module,
     _In_ PVOID Context
@@ -1913,7 +1916,7 @@ HRESULT STDMETHODCALLTYPE DnCLRDataTarget_ReadVirtual(
     }
     else
     {
-        return HRESULT_FROM_NT(status);
+        return HRESULT_FROM_WIN32(PhNtStatusToDosError(status));
     }
 }
 
@@ -1961,7 +1964,7 @@ HRESULT STDMETHODCALLTYPE DnCLRDataTarget_GetThreadContext(
     _In_ ULONG32 threadID,
     _In_ ULONG32 contextFlags,
     _In_ ULONG32 contextSize,
-    _Out_ PVOID context
+    _Out_ PBYTE context
     )
 {
     NTSTATUS status;
@@ -1988,7 +1991,7 @@ HRESULT STDMETHODCALLTYPE DnCLRDataTarget_GetThreadContext(
     }
     else
     {
-        return HRESULT_FROM_NT(status);
+        return HRESULT_FROM_WIN32(PhNtStatusToDosError(status));
     }
 }
 
@@ -1996,7 +1999,7 @@ HRESULT STDMETHODCALLTYPE DnCLRDataTarget_SetThreadContext(
     _In_ ICLRDataTarget *This,
     _In_ ULONG32 threadID,
     _In_ ULONG32 contextSize,
-    _In_ PVOID context
+    _In_ PBYTE context
     )
 {
     return E_NOTIMPL;

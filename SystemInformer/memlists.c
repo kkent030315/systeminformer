@@ -14,6 +14,7 @@
 #include <phplug.h>
 #include <emenu.h>
 #include <settings.h>
+#include <phsettings.h>
 #include <actions.h>
 #include <phsvccl.h>
 #include <kphuser.h>
@@ -651,7 +652,7 @@ VOID PhShowMemoryListCommand(
     )
 {
     PPH_EMENU menu;
-    RECT buttonRect;
+    RECT buttonRect = { 0 };
     PPH_EMENU_ITEM selectedItem;
 
     menu = PhCreateEMenu();
@@ -668,7 +669,7 @@ VOID PhShowMemoryListCommand(
 
     if (ShowTopAlign)
     {
-        GetWindowRect(ButtonWindow, &buttonRect);
+        PhGetWindowRect(ButtonWindow, &buttonRect);
         selectedItem = PhShowEMenu(
             menu,
             ParentWindow,
@@ -682,7 +683,7 @@ VOID PhShowMemoryListCommand(
     {
         POINT point;
 
-        GetClientRect(ButtonWindow, &buttonRect);
+        PhGetClientRect(ButtonWindow, &buttonRect);
         point.x = 0;
         point.y = buttonRect.bottom;
         ClientToScreen(ButtonWindow, &point);
@@ -744,7 +745,7 @@ INT_PTR CALLBACK PhpMemoryListsDlgProc(
             PhRegisterCallback(PhGetGeneralCallback(GeneralCallbackProcessProviderUpdatedEvent), ProcessesUpdatedCallback, NULL, &ProcessesUpdatedRegistration);
             PhpUpdateMemoryListInfo(hwndDlg);
 
-            PhLoadWindowPlacementFromSetting(L"MemoryListsWindowPosition", NULL, hwndDlg);
+            PhLoadWindowPlacementFromSetting(SETTING_MEMORY_LISTS_WINDOW_POSITION, NULL, hwndDlg);
             PhRegisterDialog(hwndDlg);
 
             PhInitializeWindowTheme(hwndDlg, PhEnableThemeSupport);
@@ -753,7 +754,7 @@ INT_PTR CALLBACK PhpMemoryListsDlgProc(
     case WM_DESTROY:
         {
             PhUnregisterDialog(hwndDlg);
-            PhSaveWindowPlacementToSetting(L"MemoryListsWindowPosition", NULL, hwndDlg);
+            PhSaveWindowPlacementToSetting(SETTING_MEMORY_LISTS_WINDOW_POSITION, NULL, hwndDlg);
 
             PhUnregisterCallback(PhGetGeneralCallback(GeneralCallbackProcessProviderUpdatedEvent), &ProcessesUpdatedRegistration);
 

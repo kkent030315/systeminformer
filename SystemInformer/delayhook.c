@@ -18,6 +18,7 @@
 #include <Vssym32.h>
 
 #include "settings.h"
+#include <phsettings.h>
 
 // https://learn.microsoft.com/en-us/windows/win32/winmsg/about-window-procedures#window-procedure-superclassing
 static WNDPROC PhDefaultMenuWindowProcedure = NULL;
@@ -199,7 +200,7 @@ LRESULT CALLBACK PhStaticWindowHookProcedure(
 
         if ((style & SS_ICON) == SS_ICON)
         {
-            PhSetWindowContext(WindowHandle, SCHAR_MAX, (PVOID)TRUE);
+            PhSetWindowContext(WindowHandle, SCHAR_MAX, UlongToPtr(TRUE));
         }
     }
 
@@ -222,10 +223,13 @@ LRESULT CALLBACK PhStaticWindowHookProcedure(
             if (PhEqualStringZ(windowClassName, L"CHECKLIST_ACLUI", FALSE))
             {
                 RECT rectClient;
-                GetClientRect(WindowHandle, &rectClient);
-                PhInflateRect(&rectClient, 2, 2);
-                MapWindowRect(WindowHandle, ParentHandle, &rectClient);
-                InvalidateRect(ParentHandle, &rectClient, TRUE);     // fix the annoying white border left by the previous active control
+
+                if (PhGetClientRect(WindowHandle, &rectClient))
+                {
+                    PhInflateRect(&rectClient, 2, 2);
+                    MapWindowRect(WindowHandle, ParentHandle, &rectClient);
+                    InvalidateRect(ParentHandle, &rectClient, TRUE);     // fix the annoying white border left by the previous active control
+                }
             }
         }
         break;
@@ -246,8 +250,7 @@ LRESULT CALLBACK PhStaticWindowHookProcedure(
                     static HFONT hCheckFont = NULL;
 
                     HDC hdc = BeginPaint(WindowHandle, &ps);
-                    GetClientRect(WindowHandle, &clientRect);
-
+                    clientRect = ps.rcPaint;
                     HDC bufferDc = CreateCompatibleDC(hdc);
                     HBITMAP bufferBitmap = CreateCompatibleBitmap(hdc, clientRect.right, clientRect.bottom);
                     HBITMAP oldBufferBitmap = SelectBitmap(bufferDc, bufferBitmap);
@@ -370,7 +373,7 @@ typedef struct _PHP_THEME_WINDOW_STATUSBAR_CONTEXT
 VOID ThemeWindowStatusBarCreateBufferedContext(
     _In_ PPHP_THEME_WINDOW_STATUSBAR_CONTEXT Context,
     _In_ HDC Hdc,
-    _In_ RECT BufferRect
+    _In_ PRECT BufferRect
     )
 {
     Context->BufferedDc = CreateCompatibleDC(Hdc);
@@ -378,11 +381,11 @@ VOID ThemeWindowStatusBarCreateBufferedContext(
     if (!Context->BufferedDc)
         return;
 
-    Context->BufferedContextRect = BufferRect;
+    Context->BufferedContextRect = *BufferRect;
     Context->BufferedBitmap = CreateCompatibleBitmap(
         Hdc,
-        Context->BufferedContextRect.right,
-        Context->BufferedContextRect.bottom
+        BufferRect->right,
+        BufferRect->bottom
         );
 
     Context->BufferedOldBitmap = SelectBitmap(Context->BufferedDc, Context->BufferedBitmap);
@@ -458,7 +461,7 @@ VOID ThemeWindowStatusBarDrawPart(
     if (!CallWindowProc(PhDefaultStatusbarWindowProcedure, WindowHandle, SB_GETTEXT, (WPARAM)Index, (LPARAM)text))
         return;
 
-    if (PhPtInRect(&blockRect, Context->CursorPos))
+    if (PhPtInRect(&blockRect, &Context->CursorPos))
     {
         SetTextColor(bufferDc, PhThemeWindowTextColor);
         SetDCBrushColor(bufferDc, PhThemeWindowHighlightColor);
@@ -656,7 +659,9 @@ LRESULT CALLBACK PhStatusBarWindowHookProcedure(
                     RECT bufferRect;
                     HDC hdc;
 
-                    GetClientRect(WindowHandle, &clientRect);
+                    if (!PhGetClientRect(WindowHandle, &clientRect))
+                        break;
+
                     bufferRect.left = 0;
                     bufferRect.top = 0;
                     bufferRect.right = clientRect.right - clientRect.left;
@@ -673,7 +678,7 @@ LRESULT CALLBACK PhStatusBarWindowHookProcedure(
 
                     if (!context->BufferedDc)
                     {
-                        ThemeWindowStatusBarCreateBufferedContext(context, hdc, bufferRect);
+                        ThemeWindowStatusBarCreateBufferedContext(context, hdc, &bufferRect);
                     }
 
                     if (context->BufferedDc)
@@ -722,20 +727,21 @@ LRESULT CALLBACK PhEditWindowHookProcedure(
             // The searchbox control does its own theme drawing.
             if (PhGetWindowContext(WindowHandle, SHRT_MAX))
                 break;
+            if (!PhGetWindowRect(WindowHandle, &windowRect))
+                break;
 
             updateRegion = (HRGN)wParam;
 
             if (updateRegion == HRGN_FULL)
                 updateRegion = NULL;
 
-            flags = DCX_WINDOW | DCX_LOCKWINDOWUPDATE | DCX_USESTYLE;
+            flags = DCX_WINDOW | DCX_CACHE | DCX_USESTYLE;
 
             if (updateRegion)
                 flags |= DCX_INTERSECTRGN | DCX_NODELETERGN;
 
             if (hdc = GetDCEx(WindowHandle, updateRegion, flags))
             {
-                GetWindowRect(WindowHandle, &windowRect);
                 PhOffsetRect(&windowRect, -windowRect.left, -windowRect.top);
 
                 if (GetFocus() == WindowHandle)
@@ -803,7 +809,7 @@ VOID ThemeWindowRenderHeaderControl(
             continue;
         }
 
-        if (PhPtInRect(&headerRect, Context->CursorPos))
+        if (PhPtInRect(&headerRect, &Context->CursorPos))
         {
             SetTextColor(bufferDc, PhThemeWindowTextColor);
             SetDCBrushColor(bufferDc, PhThemeWindowBackground2Color); // PhThemeWindowHighlightColor);
@@ -867,7 +873,7 @@ VOID ThemeWindowRenderHeaderControl(
                     HP_HEADERSORTARROW,
                     HSAS_SORTEDUP,
                     NULL,
-                    TS_TRUE,
+                    THEMEPARTSIZE_TRUE,
                     &sortArrowSize
                     ))
                 {
@@ -897,7 +903,7 @@ VOID ThemeWindowRenderHeaderControl(
                     HP_HEADERSORTARROW,
                     HSAS_SORTEDDOWN,
                     NULL,
-                    TS_TRUE,
+                    THEMEPARTSIZE_TRUE,
                     &sortArrowSize
                     ))
                 {
@@ -965,15 +971,15 @@ LRESULT CALLBACK PhHeaderWindowHookProcedure(
             }
         }
 
-		context = PhAllocateZero(sizeof(PHP_THEME_WINDOW_HEADER_CONTEXT));
-		context->ThemeHandle = PhOpenThemeData(WindowHandle, VSCLASS_HEADER, PhGetWindowDpi(WindowHandle));
-		context->CursorPos.x = LONG_MIN;
-		context->CursorPos.y = LONG_MIN;
-		PhSetWindowContext(WindowHandle, LONG_MAX, context);
+        context = PhAllocateZero(sizeof(PHP_THEME_WINDOW_HEADER_CONTEXT));
+        context->ThemeHandle = PhOpenThemeData(WindowHandle, VSCLASS_HEADER, PhGetWindowDpi(WindowHandle));
+        context->CursorPos.x = LONG_MIN;
+        context->CursorPos.y = LONG_MIN;
+        PhSetWindowContext(WindowHandle, LONG_MAX, context);
 
-		PhSetControlTheme(WindowHandle, L"DarkMode_ItemsView");
+        PhSetControlTheme(WindowHandle, L"DarkMode_ItemsView");
 
-		InvalidateRect(WindowHandle, NULL, FALSE);
+        InvalidateRect(WindowHandle, NULL, FALSE);
     }
     else
     {
@@ -1091,7 +1097,8 @@ LRESULT CALLBACK PhHeaderWindowHookProcedure(
                     HBITMAP bufferBitmap;
                     HBITMAP oldBufferBitmap;
 
-                    GetClientRect(WindowHandle, &clientRect);
+                    if (!PhGetClientRect(WindowHandle, &clientRect))
+                        break;
 
                     hdc = GetDC(WindowHandle);
                     bufferDc = CreateCompatibleDC(hdc);
@@ -1130,7 +1137,7 @@ VOID PhRegisterDialogSuperClass(
 
     PhDefaultDialogWindowProcedure = wcex.lpfnWndProc;
     wcex.lpfnWndProc = PhDialogWindowHookProcedure;
-    wcex.style = wcex.style | CS_PARENTDC | CS_GLOBALCLASS;
+    wcex.style = wcex.style | CS_GLOBALCLASS;
 
     UnregisterClass(L"#32770", NULL);
     if (RegisterClassEx(&wcex) == INVALID_ATOM)
@@ -1150,7 +1157,7 @@ VOID PhRegisterMenuSuperClass(
 
     PhDefaultMenuWindowProcedure = wcex.lpfnWndProc;
     wcex.lpfnWndProc = PhMenuWindowHookProcedure;
-    wcex.style = wcex.style | CS_PARENTDC | CS_GLOBALCLASS;
+    wcex.style = wcex.style | CS_GLOBALCLASS;
 
     UnregisterClass(L"#32768", NULL);
     if (RegisterClassEx(&wcex) == INVALID_ATOM)
@@ -1170,7 +1177,7 @@ VOID PhRegisterRebarSuperClass(
 
     PhDefaultRebarWindowProcedure = wcex.lpfnWndProc;
     wcex.lpfnWndProc = PhRebarWindowHookProcedure;
-    wcex.style = wcex.style | CS_PARENTDC | CS_GLOBALCLASS;
+    wcex.style = wcex.style | CS_GLOBALCLASS;
 
     UnregisterClass(REBARCLASSNAME, NULL);
     if (RegisterClassEx(&wcex) == INVALID_ATOM)
@@ -1190,7 +1197,7 @@ VOID PhRegisterComboBoxSuperClass(
 
     PhDefaultComboBoxWindowProcedure = wcex.lpfnWndProc;
     wcex.lpfnWndProc = PhComboBoxWindowHookProcedure;
-    wcex.style = wcex.style | CS_PARENTDC | CS_GLOBALCLASS;
+    wcex.style = wcex.style | CS_GLOBALCLASS;
 
     UnregisterClass(WC_COMBOBOX, NULL);
     if (RegisterClassEx(&wcex) == INVALID_ATOM)
@@ -1210,7 +1217,7 @@ VOID PhRegisterStaticSuperClass(
 
     PhDefaultStaticWindowProcedure = wcex.lpfnWndProc;
     wcex.lpfnWndProc = PhStaticWindowHookProcedure;
-    wcex.style = wcex.style | CS_PARENTDC | CS_GLOBALCLASS;
+    wcex.style = wcex.style | CS_GLOBALCLASS;
 
     UnregisterClass(WC_STATIC, NULL);
     if (RegisterClassEx(&wcex) == INVALID_ATOM)
@@ -1230,7 +1237,7 @@ VOID PhRegisterStatusBarSuperClass(
 
     PhDefaultStatusbarWindowProcedure = wcex.lpfnWndProc;
     wcex.lpfnWndProc = PhStatusBarWindowHookProcedure;
-    wcex.style = wcex.style | CS_PARENTDC | CS_GLOBALCLASS;
+    wcex.style = wcex.style | CS_GLOBALCLASS;
 
     UnregisterClass(STATUSCLASSNAME, NULL);
     if (RegisterClassEx(&wcex) == INVALID_ATOM)
@@ -1250,7 +1257,7 @@ VOID PhRegisterEditSuperClass(
 
     PhDefaultEditWindowProcedure = wcex.lpfnWndProc;
     wcex.lpfnWndProc = PhEditWindowHookProcedure;
-    wcex.style = wcex.style | CS_PARENTDC | CS_GLOBALCLASS;
+    wcex.style = wcex.style | CS_GLOBALCLASS;
 
     UnregisterClass(WC_EDIT, NULL);
     if (RegisterClassEx(&wcex) == INVALID_ATOM)
@@ -1270,7 +1277,7 @@ VOID PhRegisterHeaderSuperClass(
 
     PhDefaultHeaderWindowProcedure = wcex.lpfnWndProc;
     wcex.lpfnWndProc = PhHeaderWindowHookProcedure;
-    wcex.style = wcex.style | CS_PARENTDC | CS_GLOBALCLASS;
+    wcex.style = wcex.style | CS_GLOBALCLASS;
 
     UnregisterClass(WC_HEADER, NULL);
     if (RegisterClassEx(&wcex) == INVALID_ATOM)
@@ -1281,15 +1288,15 @@ VOID PhRegisterHeaderSuperClass(
 
 // Detours export procedure hooks
 
-static __typeof__(&DrawThemeBackground) DefaultDrawThemeBackground = NULL;
-static __typeof__(&DrawThemeBackgroundEx) DefaultDrawThemeBackgroundEx = NULL;
-static __typeof__(&DrawThemeText) DefaultDrawThemeText = NULL;
-static __typeof__(&DrawThemeTextEx) DefaultDrawThemeTextEx = NULL;
-static __typeof__(&DrawTextW) DefaultComCtl32DrawTextW = NULL;
-static __typeof__(&TaskDialogIndirect) DefaultTaskDialogIndirect = NULL;
-static __typeof__(&GetThemeColor) DefaultGetThemeColor = NULL;
-static __typeof__(&SystemParametersInfoW) DefaultSystemParametersInfo = NULL;
-static __typeof__(&CreateWindowExW) DefaultCreateWindowEx = NULL;
+static typeof(&DrawThemeBackground) DefaultDrawThemeBackground = NULL;
+static typeof(&DrawThemeBackgroundEx) DefaultDrawThemeBackgroundEx = NULL;
+static typeof(&DrawThemeText) DefaultDrawThemeText = NULL;
+static typeof(&DrawThemeTextEx) DefaultDrawThemeTextEx = NULL;
+static typeof(&DrawTextW) DefaultComCtl32DrawTextW = NULL;
+static typeof(&TaskDialogIndirect) DefaultTaskDialogIndirect = NULL;
+static typeof(&GetThemeColor) DefaultGetThemeColor = NULL;
+static typeof(&SystemParametersInfoW) DefaultSystemParametersInfo = NULL;
+static typeof(&CreateWindowExW) DefaultCreateWindowEx = NULL;
 
 // uxtheme.dll ordinal 49
 static HTHEME(WINAPI* DefaultOpenNcThemeData)(
@@ -1335,6 +1342,7 @@ LRESULT CALLBACK ThemeTaskDialogMasterSubclass(
     _In_ LPARAM lParam
     );
 
+_Function_class_(PH_WINDOW_ENUM_CALLBACK)
 BOOLEAN CALLBACK PhInitializeTaskDialogTheme(
     _In_ HWND hwndDlg,
     _In_opt_ PVOID Context
@@ -1775,6 +1783,7 @@ HTHEME PhOpenNcThemeDataHook(
     return DefaultOpenNcThemeData(hwnd, pszClassList);
 }
 
+_Function_class_(PH_WINDOW_ENUM_CALLBACK)
 BOOLEAN CALLBACK PhInitializeTaskDialogTheme(
     _In_ HWND WindowHandle,
     _In_opt_ PVOID CallbackData
@@ -2069,7 +2078,7 @@ VOID PhInitializeSuperclassControls(
     VOID
     )
 {
-    PhDefaultEnableStreamerMode = !!PhGetIntegerSetting(L"EnableStreamerMode");
+    PhDefaultEnableStreamerMode = !!PhGetIntegerSetting(SETTING_ENABLE_STREAMER_MODE);
 
     if (PhEnableThemeAcrylicSupport && !PhEnableThemeSupport)
         PhEnableThemeAcrylicSupport = FALSE;
@@ -2080,10 +2089,10 @@ VOID PhInitializeSuperclassControls(
     {
         if (WindowsVersion >= WINDOWS_11)
         {
-            PhDefaultEnableThemeAcrylicWindowSupport = !!PhGetIntegerSetting(L"EnableThemeAcrylicWindowSupport");
+            PhDefaultEnableThemeAcrylicWindowSupport = !!PhGetIntegerSetting(SETTING_ENABLE_THEME_ACRYLIC_WINDOW_SUPPORT);
         }
 
-        PhDefaultEnableThemeAnimation = !!PhGetIntegerSetting(L"EnableThemeAnimation");
+        PhDefaultEnableThemeAnimation = !!PhGetIntegerSetting(SETTING_ENABLE_THEME_ANIMATION);
 
         PhRegisterDialogSuperClass();
         PhRegisterMenuSuperClass();

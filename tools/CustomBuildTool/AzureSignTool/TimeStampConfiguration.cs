@@ -35,7 +35,7 @@ namespace CustomBuildTool
         /// <summary>
         /// A default timestamp configuration indicating no timestamp should be generated.
         /// </summary>
-        public static TimeStampConfiguration None { get; } = new TimeStampConfiguration();
+        public static TimeStampConfiguration None { get; }
 
         /// <summary>
         /// Creates a new instance of a <see cref="TimeStampConfiguration" />.
@@ -45,8 +45,8 @@ namespace CustomBuildTool
         /// <param name="type">The type of timestamp to use. See <see cref="TimeStampType" /> for details.</param>
         public TimeStampConfiguration(string url, TimeStampType type)
         {
-            Url = url;
-            Type = type;
+            this.Url = url;
+            this.Type = type;
         }
     }
 

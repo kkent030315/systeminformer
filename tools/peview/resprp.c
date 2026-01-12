@@ -91,11 +91,13 @@ typedef struct _PV_RESOURCES_CONTEXT
     PH_MAPPED_IMAGE MuiMappedImage;
 } PV_RESOURCES_CONTEXT, *PPV_RESOURCES_CONTEXT;
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PvResourcesNodeHashtableCompareFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
     );
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PvResourcesNodeHashtableHashFunction(
     _In_ PVOID Entry
     );
@@ -446,11 +448,12 @@ VOID PvpPeEnumMappedImageResources(
                             resourceData,
                             entry.Size,
                             &imageResourceEntropy,
+                            NULL,
                             NULL
                             ))
                         {
                             resourceNode->ResourcesEntropy = imageResourceEntropy;
-                            resourceNode->EntropyString = PhFormatEntropy(imageResourceEntropy, 2, 0, 0);
+                            resourceNode->EntropyString = PhFormatEntropy(imageResourceEntropy, 2, 0, 0, 0, 0);
                         }
                     }
                     __except (EXCEPTION_EXECUTE_HANDLER)
@@ -512,6 +515,7 @@ VOID PvpPeEnumAlternateMappedImageResources(
     }
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS PvpPeResourcesEnumerateThread(
     _In_ PPV_RESOURCES_CONTEXT Context
     )
@@ -801,6 +805,7 @@ LONG PvResourcesTreeNewPostSortFunction(
     return PhModifySort(Result, SortOrder);
 }
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 BOOLEAN PvResourcesNodeHashtableCompareFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
@@ -812,6 +817,7 @@ BOOLEAN PvResourcesNodeHashtableCompareFunction(
     return sectionNode1->UniqueId == sectionNode2->UniqueId;
 }
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 ULONG PvResourcesNodeHashtableHashFunction(
     _In_ PVOID Entry
     )

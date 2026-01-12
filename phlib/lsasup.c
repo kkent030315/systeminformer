@@ -26,7 +26,7 @@
  /**
   * Opens a handle to the local LSA policy.
   *
-  * @return NTSTATUS Successful or errant status.
+  * \return NTSTATUS Successful or errant status.
   */
 NTSTATUS PhOpenLsaPolicy(
     _Out_ PLSA_HANDLE PolicyHandle,
@@ -287,7 +287,7 @@ NTSTATUS PhLookupSid(
  * domain\\user. If not applicable to a particular SID, the function returns its SDDL representation.
  * You must free each item using PhDereferenceObject(), and then free the array by calling PhFree().
  */
-VOID PhLookupSids(
+NTSTATUS PhLookupSids(
     _In_ ULONG Count,
     _In_ PSID *Sids,
     _Out_ PPH_STRING **FullNames
@@ -396,6 +396,7 @@ VOID PhLookupSids(
     }
 
     *FullNames = translatedNames;
+    return status;
 }
 
 /**
@@ -966,6 +967,7 @@ typedef struct _PH_CAPABILITY_KEY_CALLBACK
     PVOID Context;
 } PH_CAPABILITY_KEY_CALLBACK, *PPH_CAPABILITY_KEY_CALLBACK;
 
+_Function_class_(PH_ENUM_KEY_CALLBACK)
 BOOLEAN NTAPI PhpAccessManagerEnumerateKeyCallback(
     _In_ HANDLE RootDirectory,
     _In_ PKEY_BASIC_INFORMATION Information,
@@ -1004,6 +1006,7 @@ BOOLEAN NTAPI PhpAccessManagerEnumerateKeyCallback(
     return TRUE;
 }
 
+_Function_class_(PH_ENUM_KEY_CALLBACK)
 BOOLEAN NTAPI PhpDeviceAccessSubKeyEnumerateKeyCallback(
     _In_ HANDLE RootDirectory,
     _In_ PKEY_BASIC_INFORMATION Information,
@@ -1037,6 +1040,7 @@ BOOLEAN NTAPI PhpDeviceAccessSubKeyEnumerateKeyCallback(
     return TRUE;
 }
 
+_Function_class_(PH_ENUM_KEY_CALLBACK)
 BOOLEAN NTAPI PhpDeviceAccessEnumerateKeyCallback(
     _In_ HANDLE RootDirectory,
     _In_ PKEY_BASIC_INFORMATION Information,

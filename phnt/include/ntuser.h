@@ -53,9 +53,9 @@ NTSTATUS
 NTAPI
 NtUserBuildHwndList(
     _In_opt_ HANDLE DesktopHandle,
-    _In_opt_ HWND StartWindowHandle,
-    _In_opt_ LOGICAL IncludeChildren,
-    _In_opt_ LOGICAL ExcludeImmersive,
+    _In_opt_ HWND ParentWindowHandle,
+    _In_opt_ BOOL IncludeChildren,
+    _In_opt_ BOOL ExcludeImmersive,
     _In_opt_ ULONG ThreadId,
     _In_ ULONG HwndListInformationLength,
     _Out_writes_bytes_(HwndListInformationLength) PVOID HwndListInformation,
@@ -83,7 +83,7 @@ NtUserBuildPropList(
     );
 
 NTSYSCALLAPI
-LOGICAL
+BOOL
 NTAPI
 NtUserCanCurrentThreadChangeForeground(
     VOID
@@ -118,17 +118,47 @@ NtUserCheckProcessForClipboardAccess(
     );
 
 NTSYSCALLAPI
-LOGICAL
+BOOL
 NTAPI
 NtUserCloseWindowStation(
     _In_ HWINSTA WindowStationHandle
     );
 
 NTSYSCALLAPI
-LOGICAL
+BOOL
 NTAPI
 NtUserDisableProcessWindowsGhosting(
     VOID
+    );
+
+NTSYSCALLAPI
+HANDLE
+NTAPI
+NtUserGetProp(
+    _In_ HWND WindowHandle,
+    _In_ PCWSTR String
+    );
+
+NTSYSCALLAPI
+HANDLE
+NTAPI
+NtUserGetProp2(
+    _In_ HWND WindowHandle,
+    _In_ PCUNICODE_STRING String
+    );
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtUserCreateWindowStation(
+    _In_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_opt_ HANDLE KeyboardLayoutHandle,
+    _In_opt_ PVOID KeyboardLayoutOffset,
+    _In_opt_ PVOID NlsTableOffset,
+    _In_opt_ PVOID KeyboardDescriptor,
+    _In_opt_ PCUNICODE_STRING LanguageIdString,
+    _In_opt_ ULONG KeyboardLocale
     );
 
 typedef enum _CONSOLECONTROL
@@ -184,10 +214,10 @@ typedef struct _CONSOLEENDTASK
  * This includes reparenting the console window, allowing the console to pass foreground rights
  * on to launched console subsystem applications and terminating attached processes.
  *
- * @param Command One of the CONSOLECONTROL values indicating which console control function should be executed.
- * @param ConsoleInformation A pointer to one of the  structures specifying additional data for the requested console control function.
- * @param ConsoleInformationLength The size of the structure pointed to by the ConsoleInformation parameter.
- * @return Successful or errant status.
+ * \param Command One of the CONSOLECONTROL values indicating which console control function should be executed.
+ * \param ConsoleInformation A pointer to one of the  structures specifying additional data for the requested console control function.
+ * \param ConsoleInformationLength The size of the structure pointed to by the ConsoleInformation parameter.
+ * \return Successful or errant status.
  */
 NTSYSCALLAPI
 NTSTATUS
@@ -198,30 +228,16 @@ NtUserConsoleControl(
     _In_ ULONG ConsoleInformationLength
     );
 
-NTSYSCALLAPI
-NTSTATUS
-NTAPI
-NtUserCreateWindowStation(
-    _In_ POBJECT_ATTRIBUTES ObjectAttributes,
-    _In_ ACCESS_MASK DesiredAccess,
-    _In_opt_ HANDLE KeyboardLayoutHandle,
-    _In_opt_ PVOID KeyboardLayoutOffset,
-    _In_opt_ PVOID NlsTableOffset,
-    _In_opt_ PVOID KeyboardDescriptor,
-    _In_opt_ PCUNICODE_STRING LanguageIdString,
-    _In_opt_ ULONG KeyboardLocale
-    );
-
 /**
  * Performs special kernel operations for console host applications. (user32.dll)
  *
  * This includes reparenting the console window, allowing the console to pass foreground rights
  * on to launched console subsystem applications and terminating attached processes.
  *
- * @param Command One of the CONSOLECONTROL values indicating which console control function should be executed.
- * @param ConsoleInformation A pointer to one of the  structures specifying additional data for the requested console control function.
- * @param ConsoleInformationLength The size of the structure pointed to by the ConsoleInformation parameter.
- * @return Successful or errant status.
+ * \param Command One of the CONSOLECONTROL values indicating which console control function should be executed.
+ * \param ConsoleInformation A pointer to one of the  structures specifying additional data for the requested console control function.
+ * \param ConsoleInformationLength The size of the structure pointed to by the ConsoleInformation parameter.
+ * \return Successful or errant status.
  */
 NTSYSAPI
 NTSTATUS
@@ -232,15 +248,30 @@ ConsoleControl(
     _In_ ULONG ConsoleInformationLength
     );
 
+/**
+ * The NtUserGetClassName routine retrieves a string that specifies the window type.
+ *
+ * \param WindowHandle A handle to the window and, indirectly, the class to which the window belongs.
+ * \param RealClassName Return the superclass or baseclass name when the window is a superclass.
+ * \param ClassName A pointer to a string that receives the window type.
+ * \return A handle to the foreground window, or NULL if no foreground window exists.
+ * \sa https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-realgetwindowclassw
+ */
 NTSYSCALLAPI
-HWND
+ULONG
 NTAPI
 NtUserGetClassName(
     _In_ HWND WindowHandle,
-    _In_ BOOL Real,
+    _In_ BOOL RealClassName,
     _Out_ PUNICODE_STRING ClassName
     );
 
+/**
+ * The NtUserGetForegroundWindow routine retrieves a handle to the foreground window.
+ *
+ * \return A handle to the foreground window, or NULL if no foreground window exists.
+ * \sa https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getforegroundwindow
+ */
 NTSYSCALLAPI
 HWND
 NTAPI
@@ -249,7 +280,7 @@ NtUserGetForegroundWindow(
     );
 
 NTSYSCALLAPI
-LOGICAL
+BOOL
 NTAPI
 NtUserGetIconInfo(
     _In_ HICON IconOrCursorHandle,
@@ -261,7 +292,7 @@ NtUserGetIconInfo(
     );
 
 NTSYSCALLAPI
-LOGICAL
+BOOL
 NTAPI
 NtUserGetIconSize(
     _In_ HGDIOBJ IconOrCursorHandle,
@@ -270,8 +301,14 @@ NtUserGetIconSize(
     _Out_ PULONG YY
     );
 
+/**
+ * The NtUserGetProcessWindowStation routine retrieves the window station handle associated with the current process.
+ *
+ * \return A handle to the window station, or NULL if the operation fails.
+ * \sa https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getprocesswindowstation
+ */
 NTSYSCALLAPI
-HWND
+HWINSTA
 NTAPI
 NtUserGetProcessWindowStation(
     VOID
@@ -341,9 +378,9 @@ NtUserOpenDesktop(
 /**
  * Opens the specified window station.
  *
- * @param ObjectAttributes The name of the window station to be opened. Window station names are case-insensitive. This window station must belong to the current session.
- * @param DesiredAccess The access to the window station.
- * @return Successful or errant status.
+ * \param ObjectAttributes The name of the window station to be opened. Window station names are case-insensitive. This window station must belong to the current session.
+ * \param DesiredAccess The access to the window station.
+ * \return Successful or errant status.
  */
 NTSYSCALLAPI
 HWINSTA
@@ -405,7 +442,7 @@ NtUserSetFocus(
 
 // User32 ordinal 2005
 NTSYSAPI
-LOGICAL
+BOOL
 NTAPI
 SetChildWindowNoActivate(
     _In_ HWND WindowHandle
@@ -422,10 +459,90 @@ NtUserSetInformationThread(
     );
 
 NTSYSCALLAPI
-LOGICAL
+BOOL
 NTAPI
 NtUserSetProcessWindowStation(
     _In_ HWINSTA WindowStationHandle
+    );
+
+// rev // Valid bit masks enforced by NtUserSetProcessWin32Capabilities
+#define PROC_CAP_FLAGS1_VALID_MASK     0x00000007u    // bits 0-2
+#define PROC_CAP_FLAGS2_VALID_MASK     0x00000007u    // bits 0-2
+#define PROC_CAP_ENABLE_VALID_MASK     0x00000001u    // bit 0
+#define PROC_CAP_DISABLE_VALID_MASK    0x00000001u    // bit 0
+
+#define PROC_CAP_FLAGS1_BIT0           0x00000001u
+#define PROC_CAP_FLAGS1_BIT1           0x00000002u
+#define PROC_CAP_FLAGS1_BIT2           0x00000004u
+
+#define PROC_CAP_FLAGS2_BIT0           0x00000001u
+#define PROC_CAP_FLAGS2_BIT1           0x00000002u
+#define PROC_CAP_FLAGS2_BIT2           0x00000004u
+
+#define PROC_CAP_ENABLE_BIT0           0x00000001u
+#define PROC_CAP_DISABLE_BIT0          0x00000001u
+
+#define PROC_CAP_FLAGS1_INVALID(x)     (((x) & ~PROC_CAP_FLAGS1_VALID_MASK) != 0)
+#define PROC_CAP_FLAGS2_INVALID(x)     (((x) & ~PROC_CAP_FLAGS2_VALID_MASK) != 0)
+#define PROC_CAP_ENABLE_INVALID(x)     (((x) & ~PROC_CAP_ENABLE_VALID_MASK) != 0)
+#define PROC_CAP_DISABLE_INVALID(x)    (((x) & ~PROC_CAP_DISABLE_VALID_MASK) != 0)
+
+// rev
+typedef struct _USER_PROCESS_CAP_ENTRY
+{
+    HANDLE ProcessHandle;
+    ULONG Flags1;
+    ULONG Flags2;
+    ULONG EnableMask;
+    ULONG DisableMask;
+} USER_PROCESS_CAP_ENTRY, *PUSER_PROCESS_CAP_ENTRY;
+
+// rev
+typedef struct _USER_PROCESS_CAP_INTERNAL
+{
+    PVOID ProcessObject;
+    ULONG SessionId;
+    ULONG Reserved;
+    ULONGLONG FlagsPacked;
+    ULONGLONG CapabilityPacked;
+} USER_PROCESS_CAP_INTERNAL, *PUSER_PROCESS_CAP_INTERNAL;
+
+// rev
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtUserSetProcessWin32Capabilities(
+    _In_reads_(Count) const USER_PROCESS_CAP_ENTRY* Capabilities,
+    _In_ ULONG Count
+    );
+
+// rev
+/**
+ * The NtUserSetProcessRestrictionExemption routine marks the current process as exempt from certain win32k/user restrictions.
+ * Note: This requires a developer mode/license check.
+ *
+ * \param Enable Indicates whether to enable or disable the exemption.
+ * \return Successful or errant status.
+ */
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtUserSetProcessRestrictionExemption(
+    _In_ BOOL EnableExemption
+    );
+
+// rev
+/**
+ * The NtUserSetProcessUIAccessZorder routine tweaks window z-order behavior for UIAccess scenarios.
+ * Note: Set only when the process is not elevated.
+ *
+ * \return Successful or errant status.
+ */
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtUserSetProcessUIAccessZorder(
+    VOID
     );
 
 NTSYSCALLAPI
@@ -437,7 +554,7 @@ NtUserSetWindowPlacement(
     );
 
 NTSYSCALLAPI
-LOGICAL
+BOOL
 NTAPI
 NtUserSetWindowStationUser(
     _In_ HWINSTA WindowStationHandle,
@@ -447,7 +564,7 @@ NtUserSetWindowStationUser(
     );
 
 NTSYSAPI
-LOGICAL
+BOOL
 NTAPI
 SetWindowStationUser(
     _In_ HWINSTA WindowStationHandle,
@@ -464,7 +581,7 @@ NtUserTestForInteractiveUser(
     );
 
 NTSYSCALLAPI
-LOGICAL
+BOOL
 NTAPI
 NtUserSwitchDesktop(
     _In_ HDESK DesktopHandle,
@@ -473,7 +590,7 @@ NtUserSwitchDesktop(
     );
 
 NTSYSCALLAPI
-LOGICAL
+BOOL
 NTAPI
 NtUserSetThreadDesktop(
     _In_ HDESK DesktopHandle
@@ -870,6 +987,22 @@ NtUserGetWindowPlacement(
     );
 
 NTSYSCALLAPI
+HANDLE
+NTAPI
+GetWindowProcessHandle(
+    _In_ HWND WindowHandle,
+    _In_ ACCESS_MASK DesiredAccess
+    );
+
+NTSYSCALLAPI
+HANDLE
+NTAPI
+NtUserGetWindowProcessHandle(
+    _In_ HWND WindowHandle,
+    _In_ ACCESS_MASK DesiredAccess
+    );
+
+NTSYSCALLAPI
 BOOL
 NTAPI
 NtUserHiliteMenuItem(
@@ -981,7 +1114,7 @@ NTAPI
 NtUserQueryInformationThread(
     _In_ HANDLE ThreadHandle,
     _In_ USERTHREADINFOCLASS ThreadInformationClass,
-    _Out_writes_bytes_(ReturnLength) PVOID ThreadInformation,
+    _Out_writes_bytes_(*ReturnLength) PVOID ThreadInformation,
     _Out_opt_ PULONG ReturnLength
     );
 
@@ -998,8 +1131,8 @@ NtUserSetInformationThread(
 NTSYSAPI
 BOOL
 NTAPI
-QuerySendMessage(
-    _Inout_ MSG* pMsg
+NtUserQuerySendMessage(
+    _Inout_ PMSG Message
     );
 
 NTSYSCALLAPI
@@ -1118,16 +1251,9 @@ NtUserSetLayeredWindowAttributes(
 NTSYSCALLAPI
 BOOL
 NTAPI
-NtUserSetProcessRestrictionExemption(
-    _In_ BOOL EnableExemption
-    );
-
-NTSYSCALLAPI
-BOOL
-NTAPI
 NtUserSetWindowPos(
     _In_ HWND WindowHandle,
-    _In_ HWND WindowHandleInsertAfter,
+    _In_opt_ HWND WindowHandleInsertAfter,
     _In_ LONG X,
     _In_ LONG Y,
     _In_ LONG cx,
@@ -1149,6 +1275,25 @@ NtUserBringWindowToTop(
         3
         );
 }
+// Send to the window registered with NtUserRegisterCloakedNotification
+// when cloak state of the window has changed
+// wParam - if window cloak state changed contains cloaking value
+//          which can be one/all of the below
+//          DWM_CLOAKED_APP(0x0000001).The window was cloaked by its owner application.
+//          DWM_CLOAKED_SHELL(0x0000002).The window was cloaked by the Shell.
+//          0 - window is not cloaked
+//
+// lParam - 0 (unused)
+//
+#define WM_CLOAKED_STATE_CHANGED 0x0347
+
+NTSYSCALLAPI
+BOOL
+NTAPI
+NtUserRegisterCloakedNotification(
+    _In_ HWND WindowHandle,
+    _In_ BOOL Register
+    );
 
 NTSYSCALLAPI
 USHORT
@@ -1181,11 +1326,14 @@ NtUserSetAdditionalForegroundBoostProcesses(
     _In_ HWND WindowHandle
     );
 
+// rev
 NTSYSCALLAPI
 ULONG
 NTAPI
 NtUserSetAdditionalPowerThrottlingProcess(
-    _In_ HWND WindowHandle
+    _In_ HWND WindowHandle,
+    _In_ ULONG ProcessHandlesCount,
+    _In_reads_(ProcessHandlesCount) PHANDLE ProcessHandles
     );
 
 NTSYSCALLAPI
@@ -1299,7 +1447,10 @@ NtUserWindowFromPoint(
     _In_ POINT Point
     );
 
-typedef NTSTATUS FN_DISPATCH(PVOID);
+typedef _Function_class_(FN_DISPATCH)
+NTSTATUS NTAPI FN_DISPATCH(
+    _In_opt_ PVOID Context
+    );
 typedef FN_DISPATCH* PFN_DISPATCH;
 
 // Peb!KernelCallbackTable = user32.dll!apfnDispatch
@@ -1447,4 +1598,4 @@ typedef struct _KERNEL_CALLBACK_TABLE
     PFN_DISPATCH __xxxClientTrackInit;
 } KERNEL_CALLBACK_TABLE, *PKERNEL_CALLBACK_TABLE;
 
-#endif
+#endif // _NTUSER_H

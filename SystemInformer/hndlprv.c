@@ -293,12 +293,14 @@ VOID PhpRemoveHandleItem(
     PhDereferenceObject(HandleItem);
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS PhpCreateHandleItemFunction(
     _In_ PVOID Parameter
     )
 {
     PPHP_CREATE_HANDLE_ITEM_CONTEXT context = Parameter;
     PPH_HANDLE_ITEM handleItem;
+    OBJECT_BASIC_INFORMATION handleBasicInformation = { 0 };
 
     handleItem = PhCreateHandleItem(context->Handle);
 
@@ -308,7 +310,7 @@ NTSTATUS PhpCreateHandleItemFunction(
         context->Handle->ObjectTypeIndex,
         0,
         NULL,
-        NULL,
+        &handleBasicInformation,
         &handleItem->TypeName,
         &handleItem->ObjectName,
         &handleItem->BestObjectName,
@@ -319,6 +321,11 @@ NTSTATUS PhpCreateHandleItemFunction(
     {
         PhMoveReference(&handleItem->TypeName, PhGetObjectTypeIndexName(handleItem->TypeIndex));
     }
+
+    handleItem->HandleCount = handleBasicInformation.HandleCount;
+    handleItem->PointerCount = handleBasicInformation.PointerCount;
+    handleItem->PagedPoolCharge = handleBasicInformation.PagedPoolCharge;
+    handleItem->NonPagedPoolCharge = handleBasicInformation.NonPagedPoolCharge;
 
     if (handleItem->TypeName)
     {
@@ -493,6 +500,8 @@ VOID PhHandleProviderUpdate(
 
         if (!handleItem)
         {
+            OBJECT_BASIC_INFORMATION handleBasicInformation = { 0 };
+
             // When we don't have KPH, query handle information in parallel to take full advantage of the
             // PhCallWithTimeout functionality.
             if (useWorkQueue && handle->ObjectTypeIndex == fileObjectTypeIndex)
@@ -514,12 +523,17 @@ VOID PhHandleProviderUpdate(
                 handle->ObjectTypeIndex,
                 0,
                 NULL,
-                NULL,
+                &handleBasicInformation,
                 &handleItem->TypeName,
                 &handleItem->ObjectName,
                 &handleItem->BestObjectName,
                 NULL
                 );
+
+            handleItem->HandleCount = handleBasicInformation.HandleCount;
+            handleItem->PointerCount = handleBasicInformation.PointerCount;
+            handleItem->PagedPoolCharge = handleBasicInformation.PagedPoolCharge;
+            handleItem->NonPagedPoolCharge = handleBasicInformation.NonPagedPoolCharge;
 
             if (PhIsNullOrEmptyString(handleItem->TypeName))
             {
@@ -531,31 +545,34 @@ VOID PhHandleProviderUpdate(
                 }
             }
 
-            if (handleItem->TypeName && PhEqualString2(handleItem->TypeName, L"File", TRUE) && level >= KphLevelMed)
+            if (handle->ObjectTypeIndex == fileObjectTypeIndex)
             {
-                KPH_FILE_OBJECT_INFORMATION objectInfo;
-
-                if (NT_SUCCESS(KphQueryInformationObject(
-                    handleProvider->ProcessHandle,
-                    handleItem->Handle,
-                    KphObjectFileObjectInformation,
-                    &objectInfo,
-                    sizeof(KPH_FILE_OBJECT_INFORMATION),
-                    NULL
-                    )))
+                if (level >= KphLevelMed)
                 {
-                    if (objectInfo.SharedRead)
-                        handleItem->FileFlags |= PH_HANDLE_FILE_SHARED_READ;
-                    if (objectInfo.SharedWrite)
-                        handleItem->FileFlags |= PH_HANDLE_FILE_SHARED_WRITE;
-                    if (objectInfo.SharedDelete)
-                        handleItem->FileFlags |= PH_HANDLE_FILE_SHARED_DELETE;
+                    KPH_FILE_OBJECT_INFORMATION objectInfo;
 
-                    // TODO add extra info from file objects here (jxy-s)
-                    // objectInfo.HasActiveTransaction;
-                    // objectInfo.UserWritableReferences;
-                    // objectInfo.IsIgnoringSharing;
-                    // ... more
+                    if (NT_SUCCESS(KphQueryInformationObject(
+                        handleProvider->ProcessHandle,
+                        handleItem->Handle,
+                        KphObjectFileObjectInformation,
+                        &objectInfo,
+                        sizeof(KPH_FILE_OBJECT_INFORMATION),
+                        NULL
+                        )))
+                    {
+                        if (objectInfo.SharedRead)
+                            handleItem->FileFlags |= PH_HANDLE_FILE_SHARED_READ;
+                        if (objectInfo.SharedWrite)
+                            handleItem->FileFlags |= PH_HANDLE_FILE_SHARED_WRITE;
+                        if (objectInfo.SharedDelete)
+                            handleItem->FileFlags |= PH_HANDLE_FILE_SHARED_DELETE;
+
+                        // TODO add extra info from file objects here (jxy-s)
+                        // objectInfo.HasActiveTransaction;
+                        // objectInfo.UserWritableReferences;
+                        // objectInfo.IsIgnoringSharing;
+                        // ... more
+                    }
                 }
             }
 
@@ -570,6 +587,45 @@ VOID PhHandleProviderUpdate(
         else
         {
             BOOLEAN modified = FALSE;
+            OBJECT_BASIC_INFORMATION handleBasicInformation = { 0 };
+
+            if (NT_SUCCESS(PhGetHandleInformationEx(
+                handleProvider->ProcessHandle,
+                handleItem->Handle,
+                handle->ObjectTypeIndex,
+                0,
+                NULL,
+                &handleBasicInformation,
+                NULL,
+                NULL,
+                NULL,
+                NULL
+                )))
+            {
+                if (handleItem->HandleCount != handleBasicInformation.HandleCount)
+                {
+                    handleItem->HandleCount = handleBasicInformation.HandleCount;
+                    modified = TRUE;
+                }
+
+                if (handleItem->PointerCount != handleBasicInformation.PointerCount)
+                {
+                    handleItem->PointerCount = handleBasicInformation.PointerCount;
+                    modified = TRUE;
+                }
+
+                if (handleItem->PagedPoolCharge != handleBasicInformation.PagedPoolCharge)
+                {
+                    handleItem->PagedPoolCharge = handleBasicInformation.PagedPoolCharge;
+                    modified = TRUE;
+                }
+
+                if (handleItem->NonPagedPoolCharge != handleBasicInformation.NonPagedPoolCharge)
+                {
+                    handleItem->NonPagedPoolCharge = handleBasicInformation.NonPagedPoolCharge;
+                    modified = TRUE;
+                }
+            }
 
             if (handleItem->Attributes != handle->HandleAttributes)
             {

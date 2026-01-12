@@ -177,7 +177,7 @@ _May_raise_ PVOID PhReferenceObjectEx(
     PPH_OBJECT_HEADER objectHeader;
     LONG oldRefCount;
 
-    assert(!(RefCount < 0));
+    assert(RefCount >= 0);
 
     objectHeader = PhObjectToObjectHeader(Object);
     // Increase the reference count.
@@ -220,7 +220,7 @@ PVOID PhReferenceObjectSafe(
  * \param Object A pointer to the object to dereference.
  */
 VOID PhDereferenceObject(
-    _In_ PVOID Object
+    _In_ _Post_invalid_ PVOID Object
     )
 {
     PPH_OBJECT_HEADER objectHeader;
@@ -230,7 +230,6 @@ VOID PhDereferenceObject(
     // Decrement the reference count.
     newRefCount = _InterlockedDecrement(&objectHeader->RefCount);
     ASSUME_ASSERT(newRefCount >= 0);
-    ASSUME_ASSERT(!(newRefCount < 0));
 
     // Free the object if it has 0 references.
     if (newRefCount == 0)
@@ -246,7 +245,7 @@ VOID PhDereferenceObject(
  * \param Object A pointer to the object to dereference.
  */
 VOID PhDereferenceObjectDeferDelete(
-    _In_ PVOID Object
+    _In_ _Post_invalid_ PVOID Object
     )
 {
     PhDereferenceObjectEx(Object, 1, TRUE);
@@ -391,7 +390,7 @@ PPH_OBJECT_TYPE PhCreateObjectTypeEx(
     objectType->DeleteProcedure = DeleteProcedure;
     objectType->Name = Name;
 
-    assert(InterlockedExchange(&PhObjectTypeCount, PhObjectTypeCount) < PH_OBJECT_TYPE_TABLE_SIZE);
+    assert(InterlockedCompareExchange(&PhObjectTypeCount, 0, 0) < PH_OBJECT_TYPE_TABLE_SIZE);
 
     PhObjectTypeTable[objectType->TypeIndex] = objectType;
 
@@ -531,7 +530,12 @@ VOID PhpDeferDeleteObject(
 
     // Save TypeIndex and Flags since they get overwritten when we push the object onto the defer
     // delete list.
+
+PH_CLANG_DIAGNOSTIC_PUSH();
+PH_CLANG_DIAGNOSTIC_IGNORED("-Wsingle-bit-bitfield-constant-conversion");
     ObjectHeader->DeferDelete = 1;
+PH_CLANG_DIAGNOSTIC_POP();
+
     MemoryBarrier();
     ObjectHeader->SavedTypeIndex = ObjectHeader->TypeIndex;
     ObjectHeader->SavedFlags = ObjectHeader->Flags;
@@ -550,6 +554,7 @@ VOID PhpDeferDeleteObject(
 /**
  * Removes and frees objects from the to-free list.
  */
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS PhpDeferDeleteObjectRoutine(
     _In_ PVOID Parameter
     )
@@ -653,7 +658,7 @@ VOID PhInitializeAutoPool(
  * \param AutoPool The auto-dereference pool to delete.
  */
 _May_raise_ VOID PhDeleteAutoPool(
-    _Inout_ PPH_AUTO_POOL AutoPool
+    _In_ _Post_invalid_ PPH_AUTO_POOL AutoPool
     )
 {
     PhDrainAutoPool(AutoPool);

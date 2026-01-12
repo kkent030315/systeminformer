@@ -13,9 +13,7 @@
 #ifndef _PH_SVCSUP_H
 #define _PH_SVCSUP_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+EXTERN_C_START
 
 extern CONST PPH_STRINGREF PhServiceTypeStrings[12];
 extern CONST PPH_STRINGREF PhServiceStartTypeStrings[5];
@@ -75,7 +73,7 @@ PhOpenServiceKey(
     );
 
 PHLIBAPI
-VOID
+NTSTATUS
 NTAPI
 PhCloseServiceHandle(
     _In_ SC_HANDLE ServiceHandle
@@ -143,17 +141,6 @@ PhQueryServiceConfig2(
     _Out_writes_bytes_opt_(BufferLength) PVOID Buffer,
     _In_ ULONG BufferLength,
     _Out_opt_ PULONG ReturnLength
-    );
-
-PHLIBAPI
-NTSTATUS
-NTAPI
-PhQueryServiceObjectSecurity(
-    _In_ SC_HANDLE ServiceHandle,
-    _In_ SECURITY_INFORMATION SecurityInformation,
-    _Out_writes_bytes_opt_(SecurityDescriptorLength) PSECURITY_DESCRIPTOR SecurityDescriptor,
-    _In_ ULONG SecurityDescriptorLength,
-    _Out_ PULONG ReturnLength
     );
 
 PHLIBAPI
@@ -243,9 +230,15 @@ PhGetServiceDescription(
     _In_ SC_HANDLE ServiceHandle
     );
 
-_Success_(return)
 PHLIBAPI
-BOOLEAN
+PPH_STRING
+NTAPI
+PhGetServiceDescriptionKey(
+    _In_ PPH_STRINGREF ServiceName
+    );
+
+PHLIBAPI
+NTSTATUS
 NTAPI
 PhGetServiceDelayedAutoStart(
     _In_ SC_HANDLE ServiceHandle,
@@ -253,16 +246,15 @@ PhGetServiceDelayedAutoStart(
     );
 
 PHLIBAPI
-BOOLEAN
+NTSTATUS
 NTAPI
 PhSetServiceDelayedAutoStart(
     _In_ SC_HANDLE ServiceHandle,
     _In_ BOOLEAN DelayedAutoStart
     );
 
-_Success_(return)
 PHLIBAPI
-BOOLEAN
+NTSTATUS
 NTAPI
 PhGetServiceTriggerInfo(
     _In_ SC_HANDLE ServiceHandle,
@@ -436,8 +428,6 @@ PhServiceWorkaroundWindowsServiceTypeBug(
         ServiceEntry->ServiceStatusProcess.dwServiceType = SERVICE_USER_SHARE_PROCESS | SERVICE_USERSERVICE_INSTANCE;
 }
 
-#ifdef __cplusplus
-}
-#endif
+EXTERN_C_END
 
 #endif

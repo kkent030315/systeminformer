@@ -14,7 +14,7 @@
 
 // Wait Chain Traversal Documentation:
 // https://learn.microsoft.com/en-us/windows/win32/debug/wait-chain-traversal
-// http://msdn.microsoft.com/en-us/library/windows/desktop/ms681622.aspx
+// https://msdn.microsoft.com/en-us/library/windows/desktop/ms681622.aspx
 
 #define WCT_GETINFO_ALL_FLAGS (WCT_OUT_OF_PROC_FLAG|WCT_OUT_OF_PROC_COM_FLAG|WCT_OUT_OF_PROC_CS_FLAG|WCT_NETWORK_IO_FLAG)
 
@@ -295,6 +295,7 @@ VOID WaitChainCheckThread(
     }
 }
 
+_Function_class_(PH_ENUM_NEXT_THREAD)
 NTSTATUS WaitChainEnumNextThread(
     _In_ HANDLE ThreadHandle,
     _In_ PWCT_CONTEXT Context
@@ -310,6 +311,7 @@ NTSTATUS WaitChainEnumNextThread(
     return STATUS_SUCCESS;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS WaitChainCallbackThread(
     _In_ PWCT_CONTEXT Context
     )
@@ -401,12 +403,12 @@ INT_PTR CALLBACK WaitChainDlgProc(
             PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDC_REFRESH), NULL, PH_ANCHOR_BOTTOM | PH_ANCHOR_LEFT);
             PhAddLayoutItem(&context->LayoutManager, GetDlgItem(hwndDlg, IDOK), NULL, PH_ANCHOR_BOTTOM | PH_ANCHOR_RIGHT);
 
-            if (PhGetIntegerPairSetting(SETTING_NAME_WCT_WINDOW_POSITION).X != 0)
+            if (PhValidWindowPlacementFromSetting(SETTING_NAME_WCT_WINDOW_POSITION))
                 PhLoadWindowPlacementFromSetting(SETTING_NAME_WCT_WINDOW_POSITION, SETTING_NAME_WCT_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, context->ParentWindowHandle);
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
 
             EtWaitChainSetTreeStatusMessage(context, FALSE);
 
@@ -861,6 +863,7 @@ BOOLEAN NTAPI WtcWaitTreeNewCallback(
     return FALSE;
 }
 
+_Function_class_(PH_HASHTABLE_EQUAL_FUNCTION)
 static BOOLEAN WtcWaitNodeHashtableEqualFunction(
     _In_ PVOID Entry1,
     _In_ PVOID Entry2
@@ -872,6 +875,7 @@ static BOOLEAN WtcWaitNodeHashtableEqualFunction(
     return node1->Index == node2->Index;
 }
 
+_Function_class_(PH_HASHTABLE_HASH_FUNCTION)
 static ULONG WtcWaitNodeHashtableHashFunction(
     _In_ PVOID Entry
     )

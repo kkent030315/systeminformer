@@ -16,6 +16,7 @@
 #include <memprv.h>
 #include <procprv.h>
 #include <settings.h>
+#include <phsettings.h>
 #include <strsrch.h>
 #include <colmgr.h>
 #include <cpysave.h>
@@ -213,7 +214,7 @@ ReadMemory:
 
             assert(context->Buffer);
 
-            if (NT_SUCCESS(status = NtReadVirtualMemory(
+            if (NT_SUCCESS(status = PhReadVirtualMemory(
                 handle,
                 context->CurrentReadAddress,
                 context->Buffer,
@@ -400,10 +401,10 @@ VOID PhpLoadSettingsMemoryStrings(
     PPH_STRING settings;
     PPH_STRING sortSettings;
 
-    settings = PhGetStringSetting(L"MemStringsTreeListColumns");
-    sortSettings = PhGetStringSetting(L"MemStringsTreeListSort");
-    Context->Settings.Flags = PhGetIntegerSetting(L"MemStringsTreeListFlags");
-    Context->Settings.MinimumLength = PhGetIntegerSetting(L"MemStringsMinimumLength");
+    settings = PhGetStringSetting(SETTING_MEM_STRINGS_TREE_LIST_COLUMNS);
+    sortSettings = PhGetStringSetting(SETTING_MEM_STRINGS_TREE_LIST_SORT);
+    Context->Settings.Flags = PhGetIntegerSetting(SETTING_MEM_STRINGS_TREE_LIST_FLAGS);
+    Context->Settings.MinimumLength = PhGetIntegerSetting(SETTING_MEM_STRINGS_MINIMUM_LENGTH);
 
     PhCmLoadSettingsEx(Context->TreeNewHandle, &Context->Cm, 0, &settings->sr, &sortSettings->sr);
 
@@ -420,10 +421,10 @@ VOID PhpSaveSettingsMemoryStrings(
 
     settings = PhCmSaveSettingsEx(Context->TreeNewHandle, &Context->Cm, 0, &sortSettings);
 
-    PhSetIntegerSetting(L"MemStringsMinimumLength", Context->Settings.MinimumLength);
-    PhSetIntegerSetting(L"MemStringsTreeListFlags", Context->Settings.Flags);
-    PhSetStringSetting2(L"MemStringsTreeListColumns", &settings->sr);
-    PhSetStringSetting2(L"MemStringsTreeListSort", &sortSettings->sr);
+    PhSetIntegerSetting(SETTING_MEM_STRINGS_MINIMUM_LENGTH, Context->Settings.MinimumLength);
+    PhSetIntegerSetting(SETTING_MEM_STRINGS_TREE_LIST_FLAGS, Context->Settings.Flags);
+    PhSetStringSetting2(SETTING_MEM_STRINGS_TREE_LIST_COLUMNS, &settings->sr);
+    PhSetStringSetting2(SETTING_MEM_STRINGS_TREE_LIST_SORT, &sortSettings->sr);
 
     PhDereferenceObject(settings);
     PhDereferenceObject(sortSettings);
@@ -511,6 +512,7 @@ VOID PhpCopyFilteredMemoryStringsNodes(
     *NodeList = list;
 }
 
+_Function_class_(PH_TN_FILTER_FUNCTION)
 BOOLEAN PhpMemoryStringsTreeFilterCallback(
     _In_ PPH_TREENEW_NODE Node,
     _In_opt_ PVOID Context
@@ -532,6 +534,7 @@ BOOLEAN PhpMemoryStringsTreeFilterCallback(
     return PhSearchControlMatch(context->SearchMatchHandle, &node->String->sr);
 }
 
+_Function_class_(PH_SEARCHCONTROL_CALLBACK)
 VOID NTAPI PvpStringsSearchControlCallback(
     _In_ ULONG_PTR MatchHandle,
     _In_opt_ PVOID Context
@@ -650,6 +653,7 @@ VOID PhpSearchMemoryStrings(
     return PhModifySort(sortResult, ((PPH_MEMSTRINGS_CONTEXT)_context)->TreeNewSortOrder); \
 }
 
+_Function_class_(PH_CM_POST_SORT_FUNCTION)
 LONG PhpMemoryStringsTreeNewPostSortFunction(
     _In_ LONG Result,
     _In_ PVOID Node1,
@@ -894,7 +898,7 @@ VOID PhpInitializeMemoryStringsTree(
     _In_ HWND TreeNewHandle
     )
 {
-    BOOLEAN enableMonospaceFont = !!PhGetIntegerSetting(L"EnableMonospaceFont");
+    BOOLEAN enableMonospaceFont = !!PhGetIntegerSetting(SETTING_ENABLE_MONOSPACE_FONT);
 
     Context->WindowHandle = WindowHandle;
     Context->TreeNewHandle = TreeNewHandle;
@@ -1142,8 +1146,8 @@ INT_PTR CALLBACK PhpMemoryStringsDlgProc(
             context->MinimumSize.bottom = 100;
             MapDialogRect(hwndDlg, &context->MinimumSize);
 
-            if (PhGetIntegerPairSetting(L"MemStringsWindowPosition").X)
-                PhLoadWindowPlacementFromSetting(L"MemStringsWindowPosition", L"MemStringsWindowSize", hwndDlg);
+            if (PhValidWindowPlacementFromSetting(SETTING_MEM_STRINGS_WINDOW_POSITION))
+                PhLoadWindowPlacementFromSetting(SETTING_MEM_STRINGS_WINDOW_POSITION, SETTING_MEM_STRINGS_WINDOW_SIZE, hwndDlg);
             else
                 PhCenterWindow(hwndDlg, PhMainWndHandle);
 
@@ -1174,7 +1178,7 @@ INT_PTR CALLBACK PhpMemoryStringsDlgProc(
             PhpSaveSettingsMemoryStrings(context);
             PhpDeleteMemoryStringsTree(context);
 
-            PhSaveWindowPlacementToSetting(L"MemStringsWindowPosition", L"MemStringsWindowSize", hwndDlg);
+            PhSaveWindowPlacementToSetting(SETTING_MEM_STRINGS_WINDOW_POSITION, SETTING_MEM_STRINGS_WINDOW_SIZE, hwndDlg);
 
             PhDeleteLayoutManager(&context->LayoutManager);
 
@@ -1185,6 +1189,12 @@ INT_PTR CALLBACK PhpMemoryStringsDlgProc(
             PhFree(context);
 
             PostQuitMessage(0);
+        }
+        break;
+    case WM_DPICHANGED:
+        {
+            PhLayoutManagerUpdate(&context->LayoutManager, LOWORD(wParam));
+            PhLayoutManagerLayout(&context->LayoutManager);
         }
         break;
     case WM_SIZE:
@@ -1352,7 +1362,8 @@ INT_PTR CALLBACK PhpMemoryStringsDlgProc(
                     PPH_EMENU_ITEM zeroPad;
                     PPH_EMENU_ITEM refresh;
 
-                    GetWindowRect(GetDlgItem(hwndDlg, IDC_SETTINGS), &rect);
+                    if (!PhGetWindowRect(GetDlgItem(hwndDlg, IDC_SETTINGS), &rect))
+                        break;
 
                     ansi = PhCreateEMenuItem(0, 1, L"ANSI", NULL, NULL);
                     unicode = PhCreateEMenuItem(0, 2, L"Unicode", NULL, NULL);

@@ -274,13 +274,13 @@ INT_PTR CALLBACK DevicePropGeneralDlgProc(
 
             DeviceInitializeGeneralPage(hwndDlg, context);
 
-            if (!PhGetIntegerPairSetting(SETTING_NAME_DEVICE_PROPERTIES_POSITION).X)
+            if (!PhValidWindowPlacementFromSetting(SETTING_NAME_DEVICE_PROPERTIES_POSITION))
             {
                 ExtendedListView_SetColumnWidth(context->GeneralListViewHandle, 1, ELVSCW_AUTOSIZE_REMAININGSPACE);
             }
 
-            if (!!PhGetIntegerSetting(L"EnableThemeSupport")) // TODO: Required for compat (dmex)
-                PhInitializeWindowTheme(GetParent(hwndDlg), !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            if (!!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT)) // TODO: Required for compat (dmex)
+                PhInitializeWindowTheme(GetParent(hwndDlg), !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
             else
                 PhInitializeWindowTheme(hwndDlg, FALSE);
         }
@@ -380,6 +380,9 @@ INT_PTR CALLBACK DevicePropGeneralDlgProc(
             RECT rect;
             PPH_EMENU_ITEM selectedItem;
 
+            if (!PhGetWindowRect(GetDlgItem(GetParent(hwndDlg), IDABORT), &rect))
+                break;
+
             menu = PhCreateEMenu();
             PhInsertEMenuItem(menu, enable = PhCreateEMenuItem(0, 0, L"Enable", NULL, NULL), ULONG_MAX);
             PhInsertEMenuItem(menu, disable = PhCreateEMenuItem(0, 1, L"Disable", NULL, NULL), ULONG_MAX);
@@ -394,7 +397,6 @@ INT_PTR CALLBACK DevicePropGeneralDlgProc(
                 uninstall->Flags |= PH_EMENU_DISABLED;
             }
 
-            GetWindowRect(GetDlgItem(GetParent(hwndDlg), IDABORT), &rect);
             selectedItem = PhShowEMenu(
                 menu,
                 hwndDlg,
@@ -683,7 +685,7 @@ INT_PTR CALLBACK DevicePropPropertiesDlgProc(
 
             DeviceInitializePropsPage(hwndDlg, context);
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     case WM_DESTROY:
@@ -857,7 +859,7 @@ INT_PTR CALLBACK DevicePropInterfacesDlgProc(
 
             DeviceInitializeInterfacesPage(hwndDlg, context);
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     case WM_DESTROY:
@@ -985,7 +987,7 @@ INT_PTR CALLBACK DevicePropResourcesDlgProc(
                 PhSetListViewSubItem(context->ResourcesListViewHandle, lvItemIndex, 1, PhGetString(resource->Setting));
             }
 
-            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(L"EnableThemeSupport"));
+            PhInitializeWindowTheme(hwndDlg, !!PhGetIntegerSetting(SETTING_ENABLE_THEME_SUPPORT));
         }
         break;
     case WM_DESTROY:
@@ -1072,6 +1074,7 @@ INT_PTR CALLBACK DevicePropResourcesDlgProc(
     return FALSE;
 }
 
+_Function_class_(USER_THREAD_START_ROUTINE)
 NTSTATUS DevicePropertiesThreadStart(
     _In_ PVOID Parameter
     )
@@ -1332,10 +1335,15 @@ VOID DeviceFreeAllocatedResourcesList(
 {
     for (ULONG i = 0; i < List->Count; i++)
     {
-        PDEVICE_RESOURCE resource = List->Items[i];
-        PhClearReference(&resource->Setting);
-        PhFree(List->Items[i]);
+        PDEVICE_RESOURCE resource;
+
+        if (resource = List->Items[i])
+        {
+            PhClearReference(&resource->Setting);
+            PhFree(List->Items[i]);
+        }
     }
 
+    PhClearList(List);
     PhDereferenceObject(List);
 }

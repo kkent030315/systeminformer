@@ -21,7 +21,7 @@
 
 EXTERN_C_START
 
-#define PH_DECLARE_IMPORT(Name) __typeof__(&(Name)) Name##_Import(VOID)
+#define PH_DECLARE_IMPORT(Name) typeof(&(Name)) Name##_Import(VOID)
 
 // Ntdll
 
@@ -38,6 +38,7 @@ PH_DECLARE_IMPORT(NtCompareObjects);
 
 PH_DECLARE_IMPORT(NtSetInformationVirtualMemory);
 PH_DECLARE_IMPORT(LdrSystemDllInitBlock);
+PH_DECLARE_IMPORT(LdrResFindResource);
 
 PH_DECLARE_IMPORT(RtlDefaultNpAcl);
 PH_DECLARE_IMPORT(RtlDelayExecution);
@@ -53,6 +54,7 @@ PH_DECLARE_IMPORT(PssNtQuerySnapshot);
 PH_DECLARE_IMPORT(PssNtFreeSnapshot);
 PH_DECLARE_IMPORT(PssNtFreeRemoteSnapshot);
 PH_DECLARE_IMPORT(NtPssCaptureVaSpaceBulk);
+PH_DECLARE_IMPORT(TpSetPoolThreadBasePriority);
 
 // Advapi32
 
@@ -83,6 +85,8 @@ PH_DECLARE_IMPORT(GetAppContainerFolderPath);
 // User32
 
 PH_DECLARE_IMPORT(ConsoleControl);
+PH_DECLARE_IMPORT(GetCurrentInputMessageSource);
+PH_DECLARE_IMPORT(GetCIMSSM);
 
 // Xmllite
 

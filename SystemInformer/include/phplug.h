@@ -246,8 +246,6 @@ typedef struct _PH_PLUGIN_HANDLE_PROPERTIES_WINDOW_CONTEXT
     PVOID ListViewClass;
     PPH_HANDLE_ITEM HandleItem;
     PH_LAYOUT_MANAGER LayoutManager;
-    INT ListViewRowCache[PH_PLUGIN_HANDLE_GENERAL_INDEX_MAXIMUM];
-    PPH_PLUGIN OwnerPlugin;
 } PH_PLUGIN_HANDLE_PROPERTIES_WINDOW_CONTEXT, *PPH_PLUGIN_HANDLE_PROPERTIES_WINDOW_CONTEXT;
 
 typedef struct _PH_PLUGIN_PROCESS_STATS_EVENT
@@ -263,7 +261,6 @@ typedef struct _PH_PLUGIN_HANDLE_PROPERTIES_CONTEXT
     HWND ParentWindowHandle;
     HANDLE ProcessId;
     PPH_HANDLE_ITEM HandleItem;
-    PPH_PLUGIN OwnerPlugin;
 } PH_PLUGIN_HANDLE_PROPERTIES_CONTEXT, *PPH_PLUGIN_HANDLE_PROPERTIES_CONTEXT;
 
 typedef struct _PH_EMENU_ITEM *PPH_EMENU_ITEM, *PPH_EMENU;
@@ -1002,17 +999,6 @@ NTAPI
 PhEnumeratePlugins(
     _In_ PPH_PLUGIN_ENUMERATE Callback,
     _In_opt_ PVOID Context
-    );
-
-PHAPPAPI
-VOID
-NTAPI
-PhShowHandlePropertiesEx(
-    _In_ HWND ParentWindowHandle,
-    _In_ HANDLE ProcessId,
-    _In_ PPH_HANDLE_ITEM HandleItem,
-    _In_opt_ PPH_PLUGIN OwnerPlugin,
-    _In_opt_ PWSTR Caption
     );
 // end_phapppub
 
